@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "uncover-extract"
+version = "0.1.0"
+description = "Instance-local Synopsys VDB coverage hole extraction using Verdi NPI"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+uncover-extract = "uncover_tool.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["uncover_tool*"]

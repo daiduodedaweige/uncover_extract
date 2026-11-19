@@ -1,0 +1,25 @@
+{
+  "version": "0.1.0",
+  "acceptance": "validation/acceptance.json",
+  "files": {
+    "README.md": "ea5df08aa2da9828bcdba7855d4ecff7b252f56ed96007fc897b69f8b0a06a39",
+    "pyproject.toml": "bcc8dff8dc988a6bcbe70012af7a7eafdbb04f3493ebe29b1143956c4c77d04e",
+    "uncover_extract.py": "300dc4411968d97e6eec41b6a43a3a8cd6045fa7745acca55989bcbe574671b7",
+    "uncover_tool/__init__.py": "064fd9d259433f755ca151ae0260b1bb7be3fa3f5f184c3dbda207e7d43083c8",
+    "uncover_tool/cli.py": "3e6b3a1a3251df7b25a21a61886ea3f04afd08a7082c5d05785ed30f4ea9f270",
+    "uncover_tool/common.py": "8eab9e81caaa61f8337512ae8bc3ee66e6af9ed071902bccf73785729a9c75bd",
+    "uncover_tool/exclusions.py": "48968f351387b905aaa4b9332cc754979407c111c7dd6c4035dd235acdf8b11c",
+    "uncover_tool/mapping.py": "3957a0547dab0ba127e2e2205ef68dc8bb50606326664cc8e05bd60b6d1ee8c7",
+    "uncover_tool/native.py": "9bed35434694f881916dc9e0d3a81d8a7d3d688aa6778c55bbacf69ade579a47",
+    "uncover_tool/output.py": "1fe583b3c614cac9a71dc908466a6cccccf3af3aa1d09a4229ab910fc97ceaff",
+    "uncover_tool/urg.py": "589e737b757d2e60dc14d3ea35dda2ac1b62fd03bf3f7b627536cf66054c16bc",
+    "uncover_tool/worker.py": "54cddcb3d60100c307e0631f7bd32d5ca0c694ed6a3b9bb36fc6512fb9f680e5",
+    "tests/test_core.py": "f33302f3ad8edb09111efc091edfa4739270d0797345cf74e7a783bdaf44834c",
+    "scripts/build_fixture.py": "15fa31b07569fea23e2f77d7e113b20207f25c1cb02b285e139602383fe8238b",
+    "scripts/check_urg.py": "adea08869e37974523c97e612904cc5f5fa49e6a9fe74415774362b415d961bd",
+    "scripts/run_scenarios.py": "b8b76cc5ad5bd2069730ba32dfbed1aca6d1f707c5111213f76dfabc596e68dd",
+    "docs/输出格式.md": "d46df1d7ec39b3e7d0b1493432fbe17150f7a5461fb58ba0466b87662456fe6d",
+    "examples/fixture/fixture.sv": "9ac48ad1f888746183d16e928d30b66b0a790b2de8fd039050d49e69f358c955",
+    "clean.sh": "15ab14d8ce8d11eb6cfc7e5d73b66196bf4113859dcb5220b2682e64db07cf98"
+  }
+}
