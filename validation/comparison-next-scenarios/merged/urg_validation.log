@@ -1,0 +1,69 @@
+{
+  "passed": true,
+  "comparison": {
+    "line": {
+      "npi": {
+        "covered": 46,
+        "coverable": 55
+      },
+      "urg": {
+        "covered": 46,
+        "coverable": 55
+      },
+      "equal": true
+    },
+    "tgl": {
+      "npi": {
+        "covered": 66,
+        "coverable": 74
+      },
+      "urg": {
+        "covered": 66,
+        "coverable": 74
+      },
+      "equal": true
+    },
+    "branch": {
+      "npi": {
+        "covered": 13,
+        "coverable": 17
+      },
+      "urg": {
+        "covered": 13,
+        "coverable": 17
+      },
+      "equal": true
+    },
+    "cond": {
+      "npi": {
+        "covered": 25,
+        "coverable": 36
+      },
+      "urg": {
+        "covered": 25,
+        "coverable": 36
+      },
+      "equal": true
+    }
+  },
+  "original_vdb_unchanged": true,
+  "command": [
+    "/nfs/tools/synopsys/vcs/U-2023.03/bin/urg",
+    "-dir",
+    "/nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-scenarios/.merged.running-i54fi0pj/.urg-input-rrvlvpzm/input.vdb",
+    "-tests",
+    "/nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-scenarios/.merged.running-i54fi0pj/urg_validation/tests.txt",
+    "-metric",
+    "line+tgl+branch+cond",
+    "-format",
+    "text",
+    "-show",
+    "summary",
+    "-show",
+    "ratios",
+    "-xml_advanced",
+    "-report",
+    "/nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-scenarios/.merged.running-i54fi0pj/urg_validation/report"
+  ],
+  "scope": "same complete design, selected tests, external exclusions; exact native totals, not rounded percentages"
+}

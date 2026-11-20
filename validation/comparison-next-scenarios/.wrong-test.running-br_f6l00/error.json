@@ -1,0 +1,5 @@
+{
+  "status": "failed",
+  "error": "Unknown/empty test selection ['not-a-test']; available tests: ['mode0', 'mode1']",
+  "type": "ToolError"
+}

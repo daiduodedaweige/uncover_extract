@@ -1,7 +1,7 @@
 """Native reads and optional XML identity hints, isolated to the worker process."""
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import Counter
 from bisect import insort
 import gzip
 import json
@@ -11,8 +11,9 @@ import sqlite3
 import sys
 import xml.etree.ElementTree as ET
 
-from .common import (METRICS, ToolError, descriptor, in_scope, location, native_totals,
-                     require, resolve, stable_id, state, walk_bins)
+from .common import (METRICS, ToolError, in_scope, location, native_totals,
+                     require, stable_id, state, walk_bins)
+from .comparison import PeerComparison
 
 
 def read_xml(path):
@@ -265,50 +266,3 @@ def scan(session, config, inventory, mapper, database_id):
         print(f"{metric}: {counters['uncovered_candidates']} uncovered atomic targets", flush=True)
     require(summary, "No implemented Verilog/SystemVerilog metrics are available in this VDB/scope")
     return summary, capabilities
-
-
-class PeerComparison:
-    def __init__(self, session):
-        self.session = session
-        self.references = defaultdict(set)
-        self.model_instances = defaultdict(set)
-        for path in session.instances:
-            sources = session.definitions.get(path, {}).get("sources", [])
-            if not sources and session.instances[path].file_name():
-                sources = [session.instances[path].file_name()]
-            for source in sources:
-                self.references[source].add(path)
-            for metric in METRICS:
-                key = session.info(path, metric)["model_key"]
-                if key is not None:
-                    self.model_instances[metric, key].add(path)
-
-    def attach(self, record):
-        session = self.session
-        path, metric, source = record["instance_path"], record["metric"], record["source_file"]
-        peers, incompatible = [], []
-        info = session.info(path, metric)
-        # Included files may not appear as definition-level srclocmult entries.
-        # Identical model candidates are still checked against the full native descriptor.
-        paths = self.references[source] | self.model_instances[metric, info["model_key"]] | {path}
-        for other in sorted(paths):
-            other_info = session.info(other, metric)
-            if other != path and (info["model_key"] is None or info["model_key"] != other_info["model_key"]):
-                incompatible.append({"instance_path": other, "reason": "definition/model identity differs or unavailable"})
-                continue
-            try:
-                root = session.handle(other, metric)
-                require(root is not None, "metric unavailable")
-                node, parents = resolve(root, record["native_locator"], session.cov.release_handle)
-                try:
-                    peers.append({"instance_path": other, **state(node, session.test)})
-                finally:
-                    session.release_parents(parents)
-            except ToolError as exc:
-                if other == path:
-                    raise
-                incompatible.append({"instance_path": other, "reason": str(exc)})
-        record["same_rtl_coverage"] = {"comparison_basis": "original source + identical definition and metric checksums + native locator descriptors",
-            "instance_count": len(paths), "comparable_instance_count": len(peers), "instances": peers,
-            "incomparable_instances": incompatible,
-            "same_target_differs": len({p["status"] for p in peers}) > 1}

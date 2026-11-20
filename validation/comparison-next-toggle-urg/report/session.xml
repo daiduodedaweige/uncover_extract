@@ -1,0 +1,24 @@
+<session version="1.1" release="U-2023.03" timestp="2026-11-19 06:13:52 GMT">
+  <info>
+    <attr name="datetime" value="Fri Nov 20 16:25:29 2026
+"/>
+    <attr name="command" value="urg -dir /nfs/home/weijing/workspace/uncover_extract/validation/.urg-input-dsrbnhnh/input.vdb -tests /nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-toggle-urg/tests.txt -metric tgl -format text -show summary -show ratios -xml_advanced -report /nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-toggle-urg/report"/>
+    <attr name="top_instance" value="tb_top"/>
+  </info>
+  <hvp>
+    <datadef>
+      <metdef name="Toggle" type="ratio" aggregator="average" builtin="1" />
+    </datadef>
+  </hvp>
+  <old_coverage>
+  <scope type="top" name="top">
+    <metric name="Toggle" value="630411/7580152" excl="0" />
+  </scope>
+  <scope type="instance" name="top">
+  </scope>
+  <scope type="group" name="top">
+  </scope>
+  <scope type="assert" name="Statistics">
+  </scope>
+  </old_coverage>
+</session>

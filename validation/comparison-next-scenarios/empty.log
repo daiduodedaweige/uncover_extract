@@ -1,0 +1,18 @@
+Reading an isolated VDB copy. Progress log: /nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-scenarios/.empty.running-4s_n7shr/execution.log
+line: 0 uncovered atomic targets
+tgl: 0 uncovered atomic targets
+branch: 0 uncovered atomic targets
+cond: 0 uncovered atomic targets
+comparison: building instance/model index
+comparison: selected line 0/0 targets, 0.00s, 0.0 targets/s, 0.0%, 0 reused comparisons (0.0%)
+comparison: selected line 0/0 targets, 0.00s, 0.0 targets/s, 0.0%, 0 reused comparisons (0.0%)
+comparison: selected tgl 0/0 targets, 0.00s, 0.0 targets/s, 0.0%, 0 reused comparisons (0.0%)
+comparison: selected tgl 0/0 targets, 0.00s, 0.0 targets/s, 0.0%, 0 reused comparisons (0.0%)
+comparison: selected branch 0/0 targets, 0.00s, 0.0 targets/s, 0.0%, 0 reused comparisons (0.0%)
+comparison: selected branch 0/0 targets, 0.00s, 0.0 targets/s, 0.0%, 0 reused comparisons (0.0%)
+comparison: selected cond 0/0 targets, 0.00s, 0.0 targets/s, 0.0%, 0 reused comparisons (0.0%)
+comparison: selected cond 0/0 targets, 0.00s, 0.0 targets/s, 0.0%, 0 reused comparisons (0.0%)
+comparison: clearing session cache
+output: writing JSON, CSV and report
+output: finished in 0.02s
+{"status": "success", "out": "/nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-scenarios/empty", "records_per_metric": {"line": 0, "tgl": 0, "branch": 0, "cond": 0}}

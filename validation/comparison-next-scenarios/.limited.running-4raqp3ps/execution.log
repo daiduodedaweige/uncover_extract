@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/nfs/home/weijing/workspace/uncover_extract/uncover_tool/worker.py", line 247, in main
+    run(config, stage)
+  File "/nfs/home/weijing/workspace/uncover_extract/uncover_tool/worker.py", line 134, in run
+    with NativeSession(config, copied) as session:
+  File "/nfs/home/weijing/workspace/uncover_extract/uncover_tool/native.py", line 73, in __enter__
+    require((home / "share/NPI/python/pynpi").is_dir(), f"Verdi Python NPI not found under {home}; set --verdi-home")
+  File "/nfs/home/weijing/workspace/uncover_extract/uncover_tool/common.py", line 27, in require
+    raise ToolError(message)
+uncover_tool.common.ToolError: Verdi Python NPI not found under /nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-scenarios/no-verdi; set --verdi-home

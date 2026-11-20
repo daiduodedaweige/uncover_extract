@@ -1,0 +1,12 @@
+Tests
+
+Total Coverage Summary 
+SCORE   LINE          COND         TOGGLE        BRANCH      
+ 39.53   54.55 30/55    8.33 3/36   54.05 40/74   41.18 7/17 
+
+
+Total tests in report: 1
+-------------------------------------------------------------------------------
+Data from the following tests was used to generate this report
+/nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-scenarios/.full.running-qyn7ib4w/.urg-input-221csa_8/input/mode0 
+

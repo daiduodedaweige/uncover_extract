@@ -1,0 +1,38 @@
+logDir = /nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-scenarios/.uncover-work-6opy8xf8/npiLog
+line: 24 uncovered atomic targets
+tgl: 34 uncovered atomic targets
+branch: 10 uncovered atomic targets
+cond: 33 uncovered atomic targets
+comparison: building instance/model index
+comparison: selected line 0/24 targets, 0.00s, 0.0 targets/s, 0.0%, 0 reused comparisons (0.0%)
+comparison: selected line 24/24 targets, 0.02s, 1157.7 targets/s, 100.0%, ETA 0.0s, 16 reused comparisons (66.7%)
+comparison: selected tgl 0/34 targets, 0.00s, 0.0 targets/s, 0.0%, 0 reused comparisons (0.0%)
+comparison: selected tgl 34/34 targets, 0.02s, 1505.7 targets/s, 100.0%, ETA 0.0s, 25 reused comparisons (43.1%)
+comparison: selected branch 0/10 targets, 0.00s, 0.0 targets/s, 0.0%, 0 reused comparisons (0.0%)
+comparison: selected branch 10/10 targets, 0.02s, 491.9 targets/s, 100.0%, ETA 0.0s, 28 reused comparisons (41.2%)
+comparison: selected cond 0/33 targets, 0.00s, 0.0 targets/s, 0.0%, 0 reused comparisons (0.0%)
+comparison: selected cond 33/33 targets, 0.03s, 1203.5 targets/s, 100.0%, ETA 0.0s, 39 reused comparisons (38.6%)
+comparison: clearing session cache
+
+                     NPI - Native Programming Interface (R)
+
+                 Version U-2023.03 for linux64 - Feb 16, 2023 
+
+                    Copyright (c) 1999 - 2023 Synopsys, Inc.
+   This software and the associated documentation are proprietary to Synopsys,
+ Inc. This software may only be used in accordance with the terms and conditions
+ of a written license agreement with Synopsys, Inc. All other use, reproduction,
+   or distribution of this software is strictly prohibited.  Licensed Products
+     communicate with Synopsys servers for the purpose of providing software
+    updates, detecting software piracy and verifying that customers are using
+    Licensed Products in conformity with the applicable License Key for such
+  Licensed Products. Synopsys will use information gathered in connection with
+    this process to deliver software updates and pursue software pirates and
+                                   infringers.
+
+ Inclusivity & Diversity - Visit SolvNetPlus to read the "Synopsys Statement on
+            Inclusivity and Diversity" (Refer to article 000036315 at
+                        https://solvnetplus.synopsys.com)
+output: writing JSON, CSV and report
+output: finished in 0.05s
+{"status": "success", "records_per_metric": {"line": 24, "tgl": 34, "branch": 10, "cond": 33}, "seconds": 4.278810144402087}

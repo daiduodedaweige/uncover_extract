@@ -1,0 +1,3 @@
+Reading an isolated VDB copy. Progress log: /nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-scenarios/.wrong-instance.running-t2ovoxa9/execution.log
+Error: Native extraction failed (exit 1); inspect /nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-scenarios/.wrong-instance.running-t2ovoxa9/execution.log
+Failure diagnostics: /nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-scenarios/.wrong-instance.running-t2ovoxa9

@@ -78,10 +78,19 @@ python3 uncover_extract.py \
 - `--per-metric`：额外生成各指标的 JSON/CSV。
 - `--include-other-states`：完整遍历原子目标，将排除、不可达、不计分和未知等非正常状态保存到 `other_states.jsonl.gz`；比默认剪枝扫描更慢。
 - `--compare-peers none|selected|all`：关闭比较、仅比较输出目标、比较所选范围全部原子目标。默认 `selected`；`all` 额外生成 `same_rtl_comparison.jsonl.gz`，保存差异及不可比记录。
+- `--comparison-batch-size N`：每批比较的主项数，默认 `256`；共享目标路径在一批内只展开一次。
+- `--comparison-cache-entries N`：内存比较缓存的条目上限，默认 `1024`；其余快照保存在工作区 SQLite，设为 `0` 时仅使用磁盘缓存。
+- `--profile-comparison`：额外统计比较期间的原生子句柄调用、返回和释放数量，用于性能分析，默认关闭。
 
 覆盖状态、排除状态和不可达标记分别保存。常规清单只包含可计分且未命中的目标，排除和不可达对象不自动计为未覆盖。Toggle 按信号位及方向，Branch/Condition 按工具建立的 bin，Line 保留语句目标和所属 Block。
 
 实例比较要求原始源码、模块定义/指标模型以及原生目标定位一致；不兼容实例保留原因。原生定位中的遍历下标只在记录的模型中有效，不能作为跨编译版本的稳定 ID。
+
+比较按模型目标复用对照结果，并对同批目标共享路径进行批量读取。缓存只在当前原生会话及当前测试、排除状态下有效；进入排除导出前清空。每条 JSON 主项仍包含完整实例对照，输出大小不会随原生读取次数等比例减少。`--instance-root` 限定主项范围，对照实例仍可位于该范围外。
+
+扫描之后会显示 `comparison:` 进度，输出阶段显示 `output:` 进度。`analysis_manifest.json` 的 `performance.comparison` 保存索引构建、读取与缓存、结果组装耗时及复用计数，`performance.timings.output_seconds` 单独记录写出耗时。大规模任务可用 `--work-dir /tmp` 将 VDB 副本和 SQLite 放到本地临时盘；请预留副本、缓存和输出所需空间。
+
+优化前后的真实 VDB 对照和最新验证范围见 [继续优化验证](validation/comparison-continuation.md)；上次恢复记录见 [比较性能验证](validation/comparison-performance.md)。`all` 的重复目标先批量去重再暂存，gzip 写出另有独立计时；单目标采用按需定位，多目标共享路径。
 
 ## 4. 可选排除与独立核验
 
@@ -136,16 +145,16 @@ tests/                  无需原生工具的逻辑测试
 examples/fixture/       可重建的小型验证设计
 scripts/                测试库构建、场景回归、URG 独立核对
 docs/                   输出字段、统计口径与内部流程说明
-validation/             基线、真实工程样本、场景结果和性能数据
+validation/             验证报告、基准摘要、最新原生场景和全设计结果
 merged0608.vdb/          当前工程的输入覆盖数据库
 rtl/                    当前工程的 RTL
 ```
 
 工具入口、脚本、文档和验证结果均位于项目根目录，与当前工程的 VDB、RTL 同级。脚本根据自身位置定位项目目录，可以从其他工作目录通过绝对路径调用。
 
-字段含义、统计口径与内部流程见 [输出格式](docs/输出格式.md)。已保存的当前工程全量 Line 结果位于 [validation/current-line-full/report.md](validation/current-line-full/report.md)；最终四指标样本位于 [validation/current-final/report.md](validation/current-final/report.md)。
+字段含义、统计口径与内部流程见 [输出格式](docs/输出格式.md)。保留的最新结果包括 [全设计 Toggle 验证](validation/comparison-next-toggle-full-all/report.md)、[四指标 fixture 样本](validation/comparison-next-scenarios/full/report.md)及[性能验证报告](validation/comparison-continuation.md)。
 
-`validation/` 保存的是已有运行的历史证据。目录迁移后，其中的当前源码映射已更新到新位置；原始配置、运行日志及 VDB 提供的源码定位仍记录当时的路径。
+`validation/` 保留报告、审计摘要、各组 `benchmark.json` 和最新原生/全设计验证结果。旧版、探测、失败运行及基准逐轮重复输出已清理，历史命令和测量数据仍保存在摘要中；重新核对已删除运行的原始输出需要重跑。留存范围见 [验证资料说明](validation/README.md)。保留结果中的运行配置和原生定位仍记录当时的路径。
 
 ## 6. 测试、错误处理与限制
 

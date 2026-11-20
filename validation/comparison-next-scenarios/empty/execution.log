@@ -1,0 +1,38 @@
+logDir = /nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-scenarios/.uncover-work-ww6i76q3/npiLog
+line: 0 uncovered atomic targets
+tgl: 0 uncovered atomic targets
+branch: 0 uncovered atomic targets
+cond: 0 uncovered atomic targets
+comparison: building instance/model index
+comparison: selected line 0/0 targets, 0.00s, 0.0 targets/s, 0.0%, 0 reused comparisons (0.0%)
+comparison: selected line 0/0 targets, 0.00s, 0.0 targets/s, 0.0%, 0 reused comparisons (0.0%)
+comparison: selected tgl 0/0 targets, 0.00s, 0.0 targets/s, 0.0%, 0 reused comparisons (0.0%)
+comparison: selected tgl 0/0 targets, 0.00s, 0.0 targets/s, 0.0%, 0 reused comparisons (0.0%)
+comparison: selected branch 0/0 targets, 0.00s, 0.0 targets/s, 0.0%, 0 reused comparisons (0.0%)
+comparison: selected branch 0/0 targets, 0.00s, 0.0 targets/s, 0.0%, 0 reused comparisons (0.0%)
+comparison: selected cond 0/0 targets, 0.00s, 0.0 targets/s, 0.0%, 0 reused comparisons (0.0%)
+comparison: selected cond 0/0 targets, 0.00s, 0.0 targets/s, 0.0%, 0 reused comparisons (0.0%)
+comparison: clearing session cache
+
+                     NPI - Native Programming Interface (R)
+
+                 Version U-2023.03 for linux64 - Feb 16, 2023 
+
+                    Copyright (c) 1999 - 2023 Synopsys, Inc.
+   This software and the associated documentation are proprietary to Synopsys,
+ Inc. This software may only be used in accordance with the terms and conditions
+ of a written license agreement with Synopsys, Inc. All other use, reproduction,
+   or distribution of this software is strictly prohibited.  Licensed Products
+     communicate with Synopsys servers for the purpose of providing software
+    updates, detecting software piracy and verifying that customers are using
+    Licensed Products in conformity with the applicable License Key for such
+  Licensed Products. Synopsys will use information gathered in connection with
+    this process to deliver software updates and pursue software pirates and
+                                   infringers.
+
+ Inclusivity & Diversity - Visit SolvNetPlus to read the "Synopsys Statement on
+            Inclusivity and Diversity" (Refer to article 000036315 at
+                        https://solvnetplus.synopsys.com)
+output: writing JSON, CSV and report
+output: finished in 0.02s
+{"status": "success", "records_per_metric": {"line": 0, "tgl": 0, "branch": 0, "cond": 0}, "seconds": 3.7269547171890736}

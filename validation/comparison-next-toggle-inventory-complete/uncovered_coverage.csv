@@ -1,0 +1,2 @@
+﻿target_id,metric,source_file,start_line,instance_path,module_name,status,covered,coverable,raw_status,target,mapped_path,mapping_status
+17ff9181dd9fa104f2be9891407a823b93790538d6609cbc225cecf5949baac9,tgl,/nfs/home/weijing/workspace/TestDongJiangV2_copy/TestDongJiangV2/build/DongJiangTop-release/rtl/Arbiter2_CMTaskBdl.sv,3,tb_top.u_DongJiangTop.hnx.slice.exu.exu_0.cmTask_arb.arb,Arbiter2_CMTaskBdl,uncovered,0,1,0,io_in_0_ready / 0 -> 1,/nfs/home/weijing/workspace/TestDongJiangV2_copy/TestDongJiangV2/build/DongJiangTop-release/rtl/Arbiter2_CMTaskBdl.sv,resolved

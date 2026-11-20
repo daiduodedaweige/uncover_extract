@@ -1,0 +1,30 @@
+{
+  "vdb": "/tmp/uncover-comparison-fixture-native/model.vdb",
+  "out": "/nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-scenarios/ambiguous-tests",
+  "rtl_roots": [],
+  "path_maps": [],
+  "instance_roots": [],
+  "metrics": [
+    "line",
+    "tgl",
+    "branch",
+    "cond"
+  ],
+  "tests": null,
+  "all_tests": false,
+  "exclude_files": [],
+  "limit": null,
+  "compare_peers": "selected",
+  "per_metric": false,
+  "comparison_batch_size": 256,
+  "comparison_cache_entries": 1024,
+  "profile_comparison": false,
+  "include_other_states": false,
+  "export_exclusions": false,
+  "validate_exclusions": false,
+  "verdi_home": "/nfs/tools/synopsys/verdi/U-2023.03",
+  "validate_urg": false,
+  "urg_bin": "/nfs/tools/synopsys/vcs/U-2023.03/bin/urg",
+  "work_dir": null,
+  "scratch_dir": "/nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-scenarios/.uncover-work-ehfikw48"
+}

@@ -31,6 +31,9 @@ def parser():
     p.add_argument("--exclude-file", action="append", default=[], type=Path, help="apply existing external exclusions before extraction")
     p.add_argument("--limit-per-metric", "--limit", type=int, help="positive output limit per metric; omit for all holes")
     p.add_argument("--compare-peers", choices=["none", "selected", "all"], default="selected")
+    p.add_argument("--comparison-batch-size", type=int, default=256, help="maximum output targets per comparison batch")
+    p.add_argument("--comparison-cache-entries", type=int, default=1024, help="memory LRU entries; other comparison snapshots spill to SQLite")
+    p.add_argument("--profile-comparison", action="store_true", help="count native comparison child-handle operations")
     p.add_argument("--include-other-states", action="store_true", help="exhaustively inventory nonstandard atomic states as gzip JSONL (slower)")
     p.add_argument("--per-metric", action="store_true")
     p.add_argument("--export-exclusions", action="store_true")
@@ -54,6 +57,8 @@ def configuration(args):
     require(not args.out.is_symlink(), "Output directory must not be a symbolic link")
     require(args.limit_per_metric is None or args.limit_per_metric > 0, "--limit-per-metric must be positive")
     require(args.timeout > 0, "--timeout must be positive")
+    require(args.comparison_batch_size > 0, "--comparison-batch-size must be positive")
+    require(args.comparison_cache_entries >= 0, "--comparison-cache-entries must be nonnegative")
     require(not args.validate_urg or not args.instance_root, "--validate-urg currently requires the complete design (omit --instance-root)")
     require(not args.validate_urg or args.urg_bin, "URG not found; set --urg-bin")
     for root in args.rtl_root:
@@ -86,6 +91,8 @@ def configuration(args):
         "instance_roots": args.instance_root, "metrics": list(dict.fromkeys(args.metrics)) if args.metrics else None,
         "tests": args.tests, "all_tests": args.all_tests, "exclude_files": [str(p.resolve()) for p in args.exclude_file],
         "limit": args.limit_per_metric, "compare_peers": args.compare_peers, "per_metric": args.per_metric,
+        "comparison_batch_size": args.comparison_batch_size, "comparison_cache_entries": args.comparison_cache_entries,
+        "profile_comparison": args.profile_comparison,
         "include_other_states": args.include_other_states, "export_exclusions": args.export_exclusions,
         "validate_exclusions": args.validate_exclusions, "verdi_home": str(args.verdi_home.resolve()),
         "validate_urg": args.validate_urg, "urg_bin": args.urg_bin,
@@ -113,14 +120,17 @@ def execute(config, timeout):
             try:
                 deadline = time.monotonic() + timeout
                 with (stage / "execution.log").open(encoding="utf-8", errors="replace") as progress:
+                    def forward_progress():
+                        for line in progress:
+                            if line.startswith(tuple(metric + ":" for metric in METRICS) + ("comparison:", "output:")):
+                                print(line.rstrip(), file=sys.stderr, flush=True)
                     while True:
                         try:
                             returncode = process.wait(timeout=0.5)
+                            forward_progress()
                             break
                         except subprocess.TimeoutExpired:
-                            for line in progress:
-                                if line.startswith(tuple(metric + ":" for metric in METRICS)):
-                                    print(line.rstrip(), file=sys.stderr, flush=True)
+                            forward_progress()
                             if time.monotonic() >= deadline:
                                 raise
             except (subprocess.TimeoutExpired, KeyboardInterrupt):

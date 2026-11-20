@@ -1,0 +1,8 @@
+{
+  "status": "failed",
+  "created_utc": "2026-11-20T07:47:02.945209+00:00",
+  "error": "Native extraction failed (exit 1); inspect /nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-scenarios/.ambiguous-tests.running-3cha2kru/execution.log",
+  "requested_output": "/nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-scenarios/ambiguous-tests",
+  "diagnostics": "/nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-scenarios/.ambiguous-tests.running-3cha2kru",
+  "workspace": "/nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-scenarios/.uncover-work-ehfikw48"
+}

@@ -39,6 +39,14 @@ def main():
     base,records=execute("full",["--compare-peers","selected","--export-exclusions","--validate-exclusions","--validate-urg"])
     require(any(row.get("same_rtl_coverage",{}).get("incomparable_instances") for row in records),
             "Parameter variants were not separated into incompatible model groups")
+    no_peers,no_peer_rows=execute("no-peers",["--compare-peers","none"])
+    require(no_peers["performance"]["comparison"]=={"mode":"none"},"Disabled comparison built an index/cache")
+    require([r["target_id"] for r in no_peer_rows]==[r["target_id"] for r in records],"Comparison mode changed target selection")
+    require(all("same_rtl_coverage" not in r for r in no_peer_rows),"Disabled comparison added peer facts")
+    chosen=next(r for r in records if r["same_rtl_coverage"]["comparable_instance_count"]>1)
+    scoped,scoped_rows=execute("outside-root-peers",["--instance-root",chosen["instance_path"],"--limit-per-metric","1"])
+    require(any(p["instance_path"]!=r["instance_path"] for r in scoped_rows for p in r["same_rtl_coverage"]["instances"]),
+            "Scoping extraction incorrectly removed outside-root peers")
     limited,rows=execute("limited",["--limit-per-metric","1"])
     for metric in base["summary"]:
         require([r["target_id"] for r in rows if r["metric"]==metric]==[r["target_id"] for r in records if r["metric"]==metric][:1],

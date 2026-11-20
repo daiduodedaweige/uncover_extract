@@ -1,0 +1,5 @@
+{
+  "status": "failed",
+  "error": "Verdi Python NPI not found under /nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-scenarios/no-verdi; set --verdi-home",
+  "type": "ToolError"
+}

@@ -1,0 +1,429 @@
+{
+  "vdb": "/nfs/home/weijing/workspace/uncover_extract/merged0608.vdb",
+  "fingerprint": {
+    "method": "sha256_all_files",
+    "sha256": "bfb7e6b7cac83133f8e5a7f46c0449c0e249bdc9a06f0983583010e7559149a7",
+    "file_count": 36,
+    "files": {
+      ".cmoptions": "2c7210d1f9c55021f6ac339e9c201cd28c98eac999969b2e628eee0199369742",
+      ".merge_options": "655fefcffef16cf0f01239eb0186a7b68a50880a871f4849db900d953be446d4",
+      ".mode64": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      ".vdb_version": "89c3e6247a14b16bad56843302fd111889a6e1f515dce791a5be65b6f3999ed5",
+      "snps/coverage/db/auxiliary/dve_debug.xml": "dc0357b136aa1607481850986d3f319062421f1a8396022f37e05cfb590cd323",
+      "snps/coverage/db/auxiliary/vcmArguments.xml": "a10d099fc4bcfb4f20606b34c1948925f3525786f81a4bbcc5d0521108a67cc9",
+      "snps/coverage/db/auxiliary/verilog.sourceinfo.xml": "0354047793f0163d3d6f078bf1bf26a7667ac6a015b515077cd366c84448db34",
+      "snps/coverage/db/design/design.cv.xml": "802acdc26aad47a53e93e0da498a283ccab5dbfcfad2a07fe1f6bdc5fc58bb3b",
+      "snps/coverage/db/design/verilog.compact_hier_file.txt": "ef8692423f4cc373514903c03d807fbeb66fcb33c3af0dc66f973e3a848b5cde",
+      "snps/coverage/db/design/verilog.design.xml": "b135644bdd7696ad1e07d6962451b5f4e13e05ec83c2ca1500f0ed8129cff07d",
+      "snps/coverage/db/shape/branch.verilog.exclude.xml": "314c5ee9ae037fb0a2bf96ff0d6f68c8cd39aa32e04f36489b25d32ea39ca590",
+      "snps/coverage/db/shape/branch.verilog.info.xml": "ad0e4cf33068d34c3733b193e451d38d08dea5f1cd87d6405380137c0bba671f",
+      "snps/coverage/db/shape/branch.verilog.shape.xml": "f4d9a9b05dd5831319ec818da3084daccd1f497fe1aff0cd73ff054eb72d6957",
+      "snps/coverage/db/shape/cond.verilog.exclude.xml": "314c5ee9ae037fb0a2bf96ff0d6f68c8cd39aa32e04f36489b25d32ea39ca590",
+      "snps/coverage/db/shape/cond.verilog.info.xml": "3ed99870d92401272bbebaa5f3d2bb6b262437c935a65006cff5ab7b4bc03790",
+      "snps/coverage/db/shape/cond.verilog.shape.xml": "ae604f3db1780efadb9609ff91c1b405aa9c043fdf3beb8748b05e8ac692b131",
+      "snps/coverage/db/shape/line.verilog.exclude.xml": "314c5ee9ae037fb0a2bf96ff0d6f68c8cd39aa32e04f36489b25d32ea39ca590",
+      "snps/coverage/db/shape/line.verilog.info.xml": "8e4fd2ba028db80f684411613b3519f741eaeec5e1f483888e6b54c9c0fc7ad3",
+      "snps/coverage/db/shape/line.verilog.shape.xml": "6af488dac0a25bce9ca7b76a2cd207c225ff42edf9bf13af18b8c7798c382c9b",
+      "snps/coverage/db/shape/tgl.verilog.info.xml": "cef98dfd0e39b175c6935ee77b3d08cd5a3de044d25aa7fc4bba89d9cbd1f1ec",
+      "snps/coverage/db/shape/tgl.verilog.shape.xml": "17a6e4ba1e4c12eeed86a3b85b420614fd4fd2516723735e7cf2a66546fa8ea6",
+      "snps/coverage/db/testdata/test/branch.verilog.data.xml": "c0f44b92d16c971dd7863773ec216e017d3c0290f89c3734b2c2238c24d251dd",
+      "snps/coverage/db/testdata/test/branch.verilog.unreachable": "a8af6ae5bd3d790310994897ae9eb04a1a6126d3a1932b62b4a7c1da64ca5b6c",
+      "snps/coverage/db/testdata/test/branch.vhdl.data.xml": "f65cf674eaf945b37e21105b83abfd2a31ddf530c63c5583c34b9f1ece4bf111",
+      "snps/coverage/db/testdata/test/cond.verilog.data.xml": "282c0f3833dda9cfc9eed762bc8c840e2848b2fef8dcbbdd2e4e2dbb2df0e033",
+      "snps/coverage/db/testdata/test/cond.verilog.unreachable": "a8af6ae5bd3d790310994897ae9eb04a1a6126d3a1932b62b4a7c1da64ca5b6c",
+      "snps/coverage/db/testdata/test/cond.vhdl.data.xml": "f65cf674eaf945b37e21105b83abfd2a31ddf530c63c5583c34b9f1ece4bf111",
+      "snps/coverage/db/testdata/test/line.verilog.data.xml": "bb156d2a78ab44acaae12e4a5a3adcfdcd7a0f9eb93ee386cf89715962ab7863",
+      "snps/coverage/db/testdata/test/line.verilog.unreachable": "a8af6ae5bd3d790310994897ae9eb04a1a6126d3a1932b62b4a7c1da64ca5b6c",
+      "snps/coverage/db/testdata/test/line.vhdl.data.xml": "f65cf674eaf945b37e21105b83abfd2a31ddf530c63c5583c34b9f1ece4bf111",
+      "snps/coverage/db/testdata/test/mergeCmdHistory.xml": "8a95dab062c4e0b9e21ea530b0f8cffef1a0bd812d31cbe961b0b25f887364c6",
+      "snps/coverage/db/testdata/test/test.xml": "a9a0abb77ec386afb4b1aaa52b4522116624422d87c4839fc0937bda3f0dbc5e",
+      "snps/coverage/db/testdata/test/tgl.verilog.data.xml": "c97013d3f5c95816f707d7480922af33010fa6501157af94cd23056b410d2284",
+      "snps/coverage/db/testdata/test/tgl.verilog.unreachable": "a8af6ae5bd3d790310994897ae9eb04a1a6126d3a1932b62b4a7c1da64ca5b6c",
+      "snps/coverage/db/testdata/test/tgl.vhdl.data.xml": "f65cf674eaf945b37e21105b83abfd2a31ddf530c63c5583c34b9f1ece4bf111",
+      "snps/coverage/db/testdata/test/vcmArguments.xml": "a10d099fc4bcfb4f20606b34c1948925f3525786f81a4bbcc5d0521108a67cc9"
+    }
+  },
+  "runs": [
+    {
+      "case": "selected",
+      "repeat": 0,
+      "version": "baseline",
+      "command": [
+        "/usr/bin/python3",
+        "/tmp/uncover-baseline-58ase6xe/uncover_extract.py",
+        "--vdb",
+        "/nfs/home/weijing/workspace/uncover_extract/merged0608.vdb",
+        "--metrics",
+        "line",
+        "--work-dir",
+        "/tmp",
+        "--timeout",
+        "300",
+        "--rtl-root",
+        "/nfs/home/weijing/workspace/uncover_extract/rtl",
+        "--compare-peers",
+        "selected",
+        "--out",
+        "/nfs/home/weijing/workspace/uncover_extract/validation/comparison-full-line/selected-0-baseline"
+      ],
+      "wall_seconds": 1.5456075258553028,
+      "performance": {
+        "timings": {
+          "fingerprint_before_seconds": 0.011618507094681263,
+          "copy_and_verify_seconds": 0.01580055244266987,
+          "scan_seconds": 0.12856405787169933,
+          "selection_and_comparison_seconds": 0.17634722590446472,
+          "exclusion_export_seconds": 8.009374141693115e-07,
+          "fingerprint_after_seconds": 0.014539862051606178
+        },
+        "seconds_before_output": 1.2550525581464171,
+        "peak_rss_kib": 225280,
+        "total_seconds": 1.3650714419782162
+      },
+      "sampled_peak_workspace_bytes": 1163876,
+      "output_bytes": 1983763,
+      "output_records": {
+        "line": 265
+      }
+    },
+    {
+      "case": "selected",
+      "repeat": 0,
+      "version": "optimized",
+      "command": [
+        "/usr/bin/python3",
+        "/nfs/home/weijing/workspace/uncover_extract/uncover_extract.py",
+        "--vdb",
+        "/nfs/home/weijing/workspace/uncover_extract/merged0608.vdb",
+        "--metrics",
+        "line",
+        "--work-dir",
+        "/tmp",
+        "--timeout",
+        "300",
+        "--rtl-root",
+        "/nfs/home/weijing/workspace/uncover_extract/rtl",
+        "--compare-peers",
+        "selected",
+        "--out",
+        "/nfs/home/weijing/workspace/uncover_extract/validation/comparison-full-line/selected-0-optimized"
+      ],
+      "wall_seconds": 4.764020599424839,
+      "performance": {
+        "timings": {
+          "fingerprint_before_seconds": 0.01204217690974474,
+          "copy_and_verify_seconds": 0.017192029394209385,
+          "native_session_seconds": 4.015695809386671,
+          "scan_seconds": 0.11727347131818533,
+          "comparison_cache_cleanup_seconds": 0.002995896153151989,
+          "selection_and_comparison_seconds": 0.0797603027895093,
+          "exclusion_export_seconds": 5.606561899185181e-07,
+          "fingerprint_after_seconds": 0.011644224636256695,
+          "output_seconds": 0.10714325401932001
+        },
+        "seconds_before_output": 4.277178327552974,
+        "peak_rss_kib": 233472,
+        "comparison": {
+          "index_seconds": 0.0018847892060875893,
+          "input_records": 265,
+          "unique_model_targets": 96,
+          "comparison_hits": 169,
+          "state_hits": 0,
+          "planning_seconds": 0.006006631068885326,
+          "batch_traversals": 56,
+          "native_state_reads": 316,
+          "native_read_and_cache_seconds": 0.013559219427406788,
+          "assembly_seconds": 0.03157617710530758,
+          "single_traversals": 1,
+          "cache": {
+            "misses": 412
+          },
+          "memory_cache_entries": 412,
+          "memory_cache_capacity": 1024,
+          "profile_native_calls": false
+        },
+        "total_seconds": 4.384369872510433
+      },
+      "sampled_peak_workspace_bytes": 1958500,
+      "output_bytes": 1984972,
+      "output_records": {
+        "line": 265
+      }
+    },
+    {
+      "case": "selected",
+      "repeat": 1,
+      "version": "optimized",
+      "command": [
+        "/usr/bin/python3",
+        "/nfs/home/weijing/workspace/uncover_extract/uncover_extract.py",
+        "--vdb",
+        "/nfs/home/weijing/workspace/uncover_extract/merged0608.vdb",
+        "--metrics",
+        "line",
+        "--work-dir",
+        "/tmp",
+        "--timeout",
+        "300",
+        "--rtl-root",
+        "/nfs/home/weijing/workspace/uncover_extract/rtl",
+        "--compare-peers",
+        "selected",
+        "--out",
+        "/nfs/home/weijing/workspace/uncover_extract/validation/comparison-full-line/selected-1-optimized"
+      ],
+      "wall_seconds": 4.661038394086063,
+      "performance": {
+        "timings": {
+          "fingerprint_before_seconds": 0.013637579046189785,
+          "copy_and_verify_seconds": 0.016926558688282967,
+          "native_session_seconds": 4.017311862669885,
+          "scan_seconds": 0.11877250112593174,
+          "comparison_cache_cleanup_seconds": 0.0034841494634747505,
+          "selection_and_comparison_seconds": 0.08503233827650547,
+          "exclusion_export_seconds": 9.723007678985596e-07,
+          "fingerprint_after_seconds": 0.011635337956249714,
+          "output_seconds": 0.12720940075814724
+        },
+        "seconds_before_output": 4.285461788997054,
+        "peak_rss_kib": 229376,
+        "comparison": {
+          "index_seconds": 0.0022519128397107124,
+          "input_records": 265,
+          "unique_model_targets": 96,
+          "comparison_hits": 169,
+          "state_hits": 0,
+          "planning_seconds": 0.006372471340000629,
+          "batch_traversals": 56,
+          "native_state_reads": 316,
+          "native_read_and_cache_seconds": 0.015055266208946705,
+          "assembly_seconds": 0.032725307159125805,
+          "single_traversals": 1,
+          "cache": {
+            "misses": 412
+          },
+          "memory_cache_entries": 412,
+          "memory_cache_capacity": 1024,
+          "profile_native_calls": false
+        },
+        "total_seconds": 4.412739028222859
+      },
+      "sampled_peak_workspace_bytes": 1155156,
+      "output_bytes": 1984976,
+      "output_records": {
+        "line": 265
+      }
+    },
+    {
+      "case": "selected",
+      "repeat": 1,
+      "version": "baseline",
+      "command": [
+        "/usr/bin/python3",
+        "/tmp/uncover-baseline-58ase6xe/uncover_extract.py",
+        "--vdb",
+        "/nfs/home/weijing/workspace/uncover_extract/merged0608.vdb",
+        "--metrics",
+        "line",
+        "--work-dir",
+        "/tmp",
+        "--timeout",
+        "300",
+        "--rtl-root",
+        "/nfs/home/weijing/workspace/uncover_extract/rtl",
+        "--compare-peers",
+        "selected",
+        "--out",
+        "/nfs/home/weijing/workspace/uncover_extract/validation/comparison-full-line/selected-1-baseline"
+      ],
+      "wall_seconds": 1.5847554514184594,
+      "performance": {
+        "timings": {
+          "fingerprint_before_seconds": 0.01143965870141983,
+          "copy_and_verify_seconds": 0.015499172732234001,
+          "scan_seconds": 0.12057145778089762,
+          "selection_and_comparison_seconds": 0.17431420739740133,
+          "exclusion_export_seconds": 3.417953848838806e-07,
+          "fingerprint_after_seconds": 0.01118414755910635
+        },
+        "seconds_before_output": 1.2082917923107743,
+        "peak_rss_kib": 229376,
+        "total_seconds": 1.3216814491897821
+      },
+      "sampled_peak_workspace_bytes": 1958500,
+      "output_bytes": 1983762,
+      "output_records": {
+        "line": 265
+      }
+    },
+    {
+      "case": "selected",
+      "repeat": 2,
+      "version": "baseline",
+      "command": [
+        "/usr/bin/python3",
+        "/tmp/uncover-baseline-58ase6xe/uncover_extract.py",
+        "--vdb",
+        "/nfs/home/weijing/workspace/uncover_extract/merged0608.vdb",
+        "--metrics",
+        "line",
+        "--work-dir",
+        "/tmp",
+        "--timeout",
+        "300",
+        "--rtl-root",
+        "/nfs/home/weijing/workspace/uncover_extract/rtl",
+        "--compare-peers",
+        "selected",
+        "--out",
+        "/nfs/home/weijing/workspace/uncover_extract/validation/comparison-full-line/selected-2-baseline"
+      ],
+      "wall_seconds": 4.727748982608318,
+      "performance": {
+        "timings": {
+          "fingerprint_before_seconds": 0.011334088630974293,
+          "copy_and_verify_seconds": 0.016240684315562248,
+          "scan_seconds": 0.11906775739043951,
+          "selection_and_comparison_seconds": 0.17023935448378325,
+          "exclusion_export_seconds": 4.7031790018081665e-07,
+          "fingerprint_after_seconds": 0.01151653379201889
+        },
+        "seconds_before_output": 4.3621795400977135,
+        "peak_rss_kib": 225280,
+        "total_seconds": 4.470218185335398
+      },
+      "sampled_peak_workspace_bytes": 1884772,
+      "output_bytes": 1983762,
+      "output_records": {
+        "line": 265
+      }
+    },
+    {
+      "case": "selected",
+      "repeat": 2,
+      "version": "optimized",
+      "command": [
+        "/usr/bin/python3",
+        "/nfs/home/weijing/workspace/uncover_extract/uncover_extract.py",
+        "--vdb",
+        "/nfs/home/weijing/workspace/uncover_extract/merged0608.vdb",
+        "--metrics",
+        "line",
+        "--work-dir",
+        "/tmp",
+        "--timeout",
+        "300",
+        "--rtl-root",
+        "/nfs/home/weijing/workspace/uncover_extract/rtl",
+        "--compare-peers",
+        "selected",
+        "--out",
+        "/nfs/home/weijing/workspace/uncover_extract/validation/comparison-full-line/selected-2-optimized"
+      ],
+      "wall_seconds": 4.610138589516282,
+      "performance": {
+        "timings": {
+          "fingerprint_before_seconds": 0.01319860015064478,
+          "copy_and_verify_seconds": 0.016643354669213295,
+          "native_session_seconds": 4.003206325694919,
+          "scan_seconds": 0.12497987132519484,
+          "comparison_cache_cleanup_seconds": 0.002596713602542877,
+          "selection_and_comparison_seconds": 0.084656928665936,
+          "exclusion_export_seconds": 6.025657057762146e-07,
+          "fingerprint_after_seconds": 0.01183802168816328,
+          "output_seconds": 0.11704676318913698
+        },
+        "seconds_before_output": 4.277100307866931,
+        "peak_rss_kib": 231424,
+        "comparison": {
+          "index_seconds": 0.001969488337635994,
+          "input_records": 265,
+          "unique_model_targets": 96,
+          "comparison_hits": 169,
+          "state_hits": 0,
+          "planning_seconds": 0.006152456626296043,
+          "batch_traversals": 56,
+          "native_state_reads": 316,
+          "native_read_and_cache_seconds": 0.01571051310747862,
+          "assembly_seconds": 0.03244870528578758,
+          "single_traversals": 1,
+          "cache": {
+            "misses": 412
+          },
+          "memory_cache_entries": 412,
+          "memory_cache_capacity": 1024,
+          "profile_native_calls": false
+        },
+        "total_seconds": 4.394242832437158
+      },
+      "sampled_peak_workspace_bytes": 4501588,
+      "output_bytes": 1984968,
+      "output_records": {
+        "line": 265
+      }
+    }
+  ],
+  "cases": {
+    "selected": {
+      "baseline": {
+        "comparison_seconds": {
+          "median": 0.17431420739740133,
+          "min": 0.17023935448378325,
+          "max": 0.17634722590446472
+        },
+        "total_seconds": {
+          "median": 1.3650714419782162,
+          "min": 1.3216814491897821,
+          "max": 4.470218185335398
+        },
+        "peak_rss_kib": {
+          "median": 225280,
+          "min": 225280,
+          "max": 229376
+        }
+      },
+      "optimized": {
+        "comparison_seconds": {
+          "median": 0.084656928665936,
+          "min": 0.0797603027895093,
+          "max": 0.08503233827650547
+        },
+        "total_seconds": {
+          "median": 4.394242832437158,
+          "min": 4.384369872510433,
+          "max": 4.412739028222859
+        },
+        "peak_rss_kib": {
+          "median": 231424,
+          "min": 229376,
+          "max": 233472
+        }
+      },
+      "comparison_reduction_percent": 51.434292172791615,
+      "total_reduction_percent": -221.9057037827388,
+      "results_equivalent": true
+    }
+  },
+  "source_dirs": {
+    "baseline": "/tmp/uncover-baseline-58ase6xe",
+    "optimized": "/nfs/home/weijing/workspace/uncover_extract"
+  },
+  "source_hashes": {
+    "baseline": "72a0357dbc5800bdc9943d82e5b1043d8e8d1a7acd3feb22b6b3f8be5644715f",
+    "optimized": "e6ed700d8e5716a7f5b67f57034cbe4baa33697894212b5f2326b7915a811b9d"
+  },
+  "python": "3.10.12 (main, Aug 31 2026, 10:18:17) [GCC 11.4.0]",
+  "load_average_before": [
+    33.2216796875,
+    30.6455078125,
+    31.34130859375
+  ],
+  "cache_conditions": "OS caches not flushed; versions alternate; includes ordinary shared-machine load",
+  "working_directory": "/tmp",
+  "original_vdb_unchanged": true,
+  "load_average_after": [
+    30.884765625,
+    30.3037109375,
+    31.208984375
+  ]
+}
