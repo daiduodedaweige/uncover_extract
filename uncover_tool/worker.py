@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from contextlib import nullcontext
+from contextlib import ExitStack, nullcontext
 import gzip
 from itertools import islice
 import json
@@ -20,7 +20,7 @@ from .common import METRICS, fingerprint, require, stable_id, write_json, walk_b
 from . import exclusions
 from .mapping import SourceMapper
 from .native import Inventory, NativeSession, PeerComparison, scan
-from .comparison import TargetInventory
+from .comparison import TargetInventory, expand_state
 from .output import write_results
 
 
@@ -70,17 +70,20 @@ def all_comparisons(session, config, stage, summary, database_id, inventory, com
         for scope in data["scopes"]:
             path = scope["instance_path"]
             info = session.info(path, metric)
+            existing = comparison.snapshot_scope(path, metric)
             for node, trail, parents in session.bins(path, metric):
-                source, line = location(parents)
+                source, line = location(parents, trail)
                 key, locator = targets.identity(metric, info["model_key"] or path, source, trail)
                 row = {"metric": metric, "instance_path": path, "source_file": source,
                        "start_line": line, "native_locator": list(trail),
-                       **comparison.snapshot(path, metric, trail, node, locator=locator)}
+                       "_state": comparison.snapshot(path, metric, trail, node, locator=locator,
+                                                     existing=existing, compact=True)}
                 targets.add(key, row)
                 visited += 1
                 progress.update(visited)
         targets.flush()
         inventory.db.commit()
+        comparison.cache.flush(commit=True)
     progress.update(visited, force=True)
     targets.identities.clear()
     comparison.stats["all_inventory_seconds"] = time.perf_counter() - tick
@@ -91,16 +94,18 @@ def all_comparisons(session, config, stage, summary, database_id, inventory, com
         output_seconds = time.perf_counter() - output_tick
         rows = (json.loads(row[0]) for row in inventory.db.execute("SELECT record FROM comparison_targets ORDER BY identity"))
         for batch in batches(rows, config.get("comparison_batch_size", 256)):
-            comparison.attach_many(batch)
+            emitted = comparison.attach_unique(batch)
             output_tick = time.perf_counter()
-            for row in batch:
-                checked += 1
+            checked += len(batch)
+            for row in emitted:
+                row.update(expand_state(row.pop("_state")))
                 peers = row["same_rtl_coverage"]
                 if peers["same_target_differs"] or peers["incomparable_instances"]:
                     stream.write(json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n")
                     differences += int(peers["same_target_differs"])
             output_seconds += time.perf_counter() - output_tick
             inventory.db.commit()
+            comparison.cache.flush(commit=True)
             progress.update(checked, comparison)
         output_tick = time.perf_counter()
     comparison.stats["gzip_output_seconds"] = output_seconds + time.perf_counter() - output_tick
@@ -131,7 +136,7 @@ def run(config, stage):
             mapper = SourceMapper(config["rtl_roots"], config["path_maps"])
             try:
                 tick = time.perf_counter()
-                with NativeSession(config, copied) as session:
+                with NativeSession(config, copied) as session, ExitStack() as comparison_cleanup:
                     timings["native_session_seconds"] = time.perf_counter() - tick
                     tick = time.perf_counter()
                     summary, capabilities = scan(session, config, inventory, mapper, before["sha256"])
@@ -141,8 +146,10 @@ def run(config, stage):
                     comparison_stats = {"mode": "none"}
                     if config["compare_peers"] != "none":
                         print("comparison: building instance/model index", flush=True)
-                        peer_comparison = PeerComparison(session, metrics=summary, db=inventory.db,
-                            cache_entries=config.get("comparison_cache_entries", 1024), profile=config.get("profile_comparison", False))
+                        peer_comparison = PeerComparison(session, metrics=summary, cache_path=work / "comparison.sqlite",
+                            cache_entries=config.get("comparison_cache_entries", 1024),
+                            batch_size=config.get("comparison_batch_size", 256), profile=config.get("profile_comparison", False))
+                        comparison_cleanup.callback(peer_comparison.close)
                     for metric, counts in summary.items():
                         output_count = 0
                         total = counts["uncovered_candidates"]
@@ -156,6 +163,8 @@ def run(config, stage):
                                 ((metric, json.dumps(record)) for record in batch))
                             output_count += len(batch)
                             inventory.db.commit()
+                            if peer_comparison:
+                                peer_comparison.cache.flush(commit=True)
                             if progress:
                                 progress.update(output_count, peer_comparison)
                         if progress:

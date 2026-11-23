@@ -1,15 +1,18 @@
 """Comparison semantics, bounded caching and native handle ownership."""
 from collections import Counter
 from copy import deepcopy
+from contextlib import nullcontext
+import os
 from pathlib import Path
 import sqlite3
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from test_core import Node
-from uncover_tool.common import ToolError, descriptor, read_targets, stable_id
-from uncover_tool.comparison import PeerComparison, SnapshotCache, TargetInventory
+from uncover_tool.common import ToolError, descriptor, read_targets, stable_id, state
+from uncover_tool.comparison import PeerComparison, SnapshotCache, TargetInventory, compact_state, expand_state
 
 
 class Session:
@@ -140,6 +143,130 @@ class ComparisonTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "native failed"):
             comparison.attach(session.row())
 
+    def test_index_failure_does_not_allocate_owned_cache(self):
+        session = Session(count=1)
+        def broken_info(*args): raise RuntimeError("index failed")
+        session.info = broken_info
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "comparison.sqlite"
+            with self.assertRaisesRegex(RuntimeError, "index failed"):
+                PeerComparison(session, cache_path=path)
+            self.assertFalse(path.exists())
+
+    def test_worker_native_failure_closes_cache_and_retains_candidate_inventory(self):
+        from uncover_tool import worker
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            original, scratch, stage = (root / name for name in ("original.vdb", "scratch", "stage"))
+            for directory in (original, scratch, stage): directory.mkdir()
+            (original / "fact").write_text("original data")
+            session = Session(count=1)
+            row = session.row()
+            row["start_line"] = 3
+            def broken_handle(*args): raise RuntimeError("native read failed")
+            session.handle = broken_handle
+            def fake_scan(session, config, inventory, mapper, database_id):
+                inventory.add(row)
+                return {"line": {"uncovered_candidates": 1, "scopes": []}}, {}
+            config = {"vdb": str(original), "scratch_dir": str(scratch), "work_dir": str(root),
+                      "rtl_roots": [], "path_maps": [], "compare_peers": "selected", "limit": None}
+            cwd = Path.cwd()
+            try:
+                with patch.object(worker, "NativeSession", return_value=nullcontext(session)), \
+                     patch.object(worker, "scan", side_effect=fake_scan):
+                    with self.assertRaisesRegex(RuntimeError, "native read failed"):
+                        worker.run(config, stage)
+            finally:
+                os.chdir(cwd)
+            self.assertFalse((scratch / "comparison.sqlite").exists())
+            self.assertTrue((scratch / "inventory.sqlite").exists())
+            self.assertEqual((original / "fact").read_text(), "original data")
+
+    def test_unique_results_match_full_results_without_caching_new_groups(self):
+        for changed_model in (False, True):
+            session = Session(count=3, width=3)
+            if changed_model:
+                session.models["top.u02"] = "other"
+            full = self.comparison(session, cache_entries=0)
+            unique = self.comparison(session, cache_entries=0)
+            expected = [session.row(index=i) for i in range(3)]
+            full.attach_many(expected)
+            rows = [session.row(index=i) for i in range(3)]
+            self.assertEqual(unique.attach_unique(rows), expected)
+            self.assertEqual(unique.cache.db.execute("SELECT COUNT(*) FROM peer_cache").fetchone()[0], 0)
+            rows[0]["same_rtl_coverage"]["instances"][0]["flags"]["covered"] = True
+            self.assertFalse(rows[1]["same_rtl_coverage"]["instances"][0]["flags"]["covered"])
+
+    def test_unique_skips_equal_display_states_but_reads_and_checks_every_peer(self):
+        session = Session(count=2)
+        # Independent raw flags differ, but both display as uncovered.
+        session.roots["top.u01"].values[7][0].values = Node("0", kind="npiCovStmtBin",
+            source="same.sv", raw=1 << 7).values
+        comparison = self.comparison(session, cache_entries=0)
+        rows = [session.row()]
+        self.assertEqual(comparison.attach_unique(rows), [])
+        self.assertEqual(session.counts["states"], 2)
+        self.assertNotIn("same_rtl_coverage", rows[0])
+        self.assertEqual(comparison.stats["all_results_skipped"], 1)
+        # Equal statuses cannot hide an incompatible descriptor.
+        session.roots["top.u01"] = Node("root", children=[Node("changed")])
+        fresh = self.comparison(session)
+        row = session.row()
+        self.assertEqual(fresh.attach_unique([row]), [row])
+        self.assertFalse(row["same_rtl_coverage"]["same_target_differs"])
+        self.assertEqual(len(row["same_rtl_coverage"]["incomparable_instances"]), 1)
+
+    def test_unique_reuses_selected_results_and_own_failures_still_abort(self):
+        session = Session(count=2)
+        session.roots["top.u01"] = Node("root", children=[Node("changed")])
+        comparison = self.comparison(session)
+        selected = session.row()
+        comparison.attach(selected)
+        reads = session.counts["states"]
+        all_row = session.row()
+        self.assertEqual(comparison.attach_unique([all_row]), [selected])
+        self.assertEqual(session.counts["states"], reads)
+        all_row["same_rtl_coverage"]["instances"][0]["flags"]["covered"] = True
+        self.assertFalse(selected["same_rtl_coverage"]["instances"][0]["flags"]["covered"])
+        own_bad = session.row()
+        own_bad["instance_path"] = "top.u01"
+        with self.assertRaises(ToolError): comparison.attach_unique([own_bad])
+        fresh = self.comparison(session)
+        with self.assertRaises(ToolError): fresh.attach_unique([own_bad])
+
+    def test_scope_snapshot_reuses_selected_and_avoids_fresh_key_queries(self):
+        session = Session(count=2, width=5)
+        comparison = self.comparison(session, cache_entries=0, batch_size=2)
+        comparison.attach(session.row())
+        for path in session.instances:
+            existing = comparison.snapshot_scope(path, "line")
+            before = comparison.cache.counts["state_query_batches"]
+            for i, node in enumerate(session.roots[path].values[7]):
+                row = session.row(path, i)
+                comparison.snapshot(path, "line", row["native_locator"], node, existing=existing, compact=True)
+            self.assertEqual(comparison.cache.counts["state_query_batches"], before)
+        self.assertEqual(session.counts["states"], 10)
+        self.assertEqual(comparison.stats["enumerated_state_hits"], 2)
+        # More pre-existing states than the bound safely fall back to lookup.
+        self.assertIsNone(comparison.snapshot_scope("top.u00", "line"))
+        row = session.row()
+        comparison.snapshot("top.u00", "line", row["native_locator"], session.roots["top.u00"].values[7][0])
+        self.assertEqual(session.counts["states"], 10)
+
+    def test_scope_snapshot_preserves_cached_error_without_native_reread(self):
+        session = Session(count=1)
+        comparison = self.comparison(session, cache_entries=0)
+        row = session.row()
+        locator = stable_id(row["native_locator"])
+        key = comparison.state_key(row["instance_path"], "line", locator)
+        comparison.cache.put_states({key: {"error": "metric unavailable"}})
+        existing = comparison.snapshot_scope(row["instance_path"], "line")
+        self.assertEqual(comparison.snapshot(row["instance_path"], "line", row["native_locator"],
+            session.roots[row["instance_path"]].values[7][0], existing=existing), {"error": "metric unavailable"})
+        self.assertEqual(session.counts["states"], 0)
+        with self.assertRaisesRegex(ToolError, "metric unavailable"):
+            comparison.attach_unique([row])
+
 
 class BatchOwnershipTests(unittest.TestCase):
     def test_descriptor_and_index_errors_are_local_and_all_handles_released(self):
@@ -218,6 +345,72 @@ class TargetInventoryTests(unittest.TestCase):
 
 
 class CacheBatchTests(unittest.TestCase):
+    def test_result_membership_overflow_falls_back_to_sql(self):
+        cache = SnapshotCache(capacity=0, batch_size=2)
+        self.addCleanup(cache.close)
+        for index in range(3):
+            cache.put("result", str(index), {"value": index})
+        self.assertIsNone(cache.result_keys)
+        self.assertEqual(cache.existing_results(["0", "1", "absent"]),
+                         {"0": {"value": 0}, "1": {"value": 1}})
+
+    def test_compact_facts_round_trip_across_batches_and_sql_integer_limits(self):
+        cache = SnapshotCache(capacity=0, batch_size=3)
+        self.addCleanup(cache.close)
+        values = {}
+        raw_values = [-1, -99, 0, 1, 2, 4 | 64 | 1, 1023, 1 << 80]
+        for i in range(1200):
+            key = i % 3, i % 2, i.to_bytes(32, "big")
+            facts = compact_state(state(Node("leaf", covered=i % 4 - 1,
+                coverable=i % 3, raw=raw_values[i % len(raw_values)]), None))
+            values[key] = facts
+        error_key = 0, 0, b"error"
+        values[error_key] = {"error": "descriptor changed"}
+        cache.put_states(values)
+        self.assertLess(len(cache.pending_states), 3)
+        self.assertEqual(cache.get_states(values), values)
+        cache.flush(commit=True)
+        self.assertEqual(cache.get_states(values), values)
+        self.assertFalse(cache.memory)
+        for value in values.values():
+            expanded = expand_state(value)
+            self.assertEqual(compact_state(expanded), value)
+        cache.clear()
+        self.assertFalse(cache.get_states(values))
+
+    def test_owned_close_unlinks_without_delete_and_preserves_other_databases(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "comparison.sqlite"
+            inventory = sqlite3.connect(Path(tmp) / "inventory.sqlite")
+            inventory.execute("CREATE TABLE selected (record TEXT)")
+            inventory.execute("INSERT INTO selected VALUES ('kept')")
+            cache = SnapshotCache(path=path, batch_size=2)
+            statements = []
+            cache.db.set_trace_callback(statements.append)
+            cache.put_states({(0, 0, b"a"): (0, 1, 0), (0, 0, b"b"): {"error": "no metric"}})
+            cache.flush(commit=True)
+            cache.close(); cache.close()
+            self.assertFalse(path.exists())
+            self.assertFalse(any(sql.startswith("DELETE") for sql in statements))
+            self.assertEqual(inventory.execute("SELECT * FROM selected").fetchall(), [("kept",)])
+            inventory.close()
+            path.write_text("caller owned")
+            with self.assertRaises(FileExistsError): SnapshotCache(path=path)
+            self.assertEqual(path.read_text(), "caller owned")
+
+    def test_shared_close_is_namespace_local_does_not_commit_or_close_connection(self):
+        db = sqlite3.connect(":memory:")
+        self.addCleanup(db.close)
+        first, second = SnapshotCache(db=db, capacity=0), SnapshotCache(db=db, capacity=0)
+        self.addCleanup(first.close); self.addCleanup(second.close)
+        key = 0, 0, b"target"
+        first.put_states({key: (0, 1, -1)})
+        second.put_states({key: (1, 1, 8)})
+        first.flush(); second.flush()
+        first.close(); first.close()
+        self.assertTrue(db.in_transaction)
+        self.assertEqual(second.get_states([key]), {key: (1, 1, 8)})
+
     def test_sorted_disk_queries_cross_sql_parameter_batches_and_preserve_namespace(self):
         cache = SnapshotCache(capacity=3)
         self.addCleanup(cache.close)

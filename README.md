@@ -88,6 +88,8 @@ python3 uncover_extract.py \
 
 比较按模型目标复用对照结果，并对同批目标共享路径进行批量读取。缓存只在当前原生会话及当前测试、排除状态下有效；进入排除导出前清空。每条 JSON 主项仍包含完整实例对照，输出大小不会随原生读取次数等比例减少。`--instance-root` 限定主项范围，对照实例仍可位于该范围外。
 
+初扫复用遍历已读取的叶节点状态和源码定位。比较状态使用独立 SQLite 与有界批次，缓存退出直接回收自有数据库文件。`all` 对全部必要实例完成定位核验和状态读取后，仅为差异及不可比目标展开完整结果；公开状态、目标 ID、排序和主项明细保持原有含义。本轮实现及验证见 [Q1–Q4 验证报告](validation/comparison-q1-q4.md)。
+
 扫描之后会显示 `comparison:` 进度，输出阶段显示 `output:` 进度。`analysis_manifest.json` 的 `performance.comparison` 保存索引构建、读取与缓存、结果组装耗时及复用计数，`performance.timings.output_seconds` 单独记录写出耗时。大规模任务可用 `--work-dir /tmp` 将 VDB 副本和 SQLite 放到本地临时盘；请预留副本、缓存和输出所需空间。
 
 优化前后的真实 VDB 对照和最新验证范围见 [继续优化验证](validation/comparison-continuation.md)；上次恢复记录见 [比较性能验证](validation/comparison-performance.md)。`all` 的重复目标先批量去重再暂存，gzip 写出另有独立计时；单目标采用按需定位，多目标共享路径。

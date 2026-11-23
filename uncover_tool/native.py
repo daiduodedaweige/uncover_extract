@@ -131,9 +131,9 @@ class NativeSession:
             self.handles[key] = getattr(self.instances[path], METRICS[metric][0])()
         return self.handles[key]
 
-    def bins(self, path, metric, missing_only=False):
+    def bins(self, path, metric, missing_only=False, with_state=False):
         return walk_bins(self.handle(path, metric), METRICS[metric][1], self.test,
-                         missing_only=missing_only, release=self.cov.release_handle)
+                         missing_only=missing_only, release=self.cov.release_handle, with_state=with_state)
 
     def release_parents(self, parents):
         for parent in reversed(parents[1:]):
@@ -220,13 +220,13 @@ def scan(session, config, inventory, mapper, database_id):
             counters["native_coverable"] += coverable
             scope_totals.append({"instance_path": path, "covered": covered, "coverable": coverable})
             info = session.info(path, metric)
-            for node, trail, parents in session.bins(path, metric, missing_only=not config["include_other_states"]):
+            for node, trail, parents, current in session.bins(path, metric,
+                    missing_only=not config["include_other_states"], with_state=True):
                 counters["visited_atomic_bins"] += 1
-                current = state(node, session.test)
                 counters["visited_" + current["status"]] += 1
                 if current["status"] != "uncovered" and not config["include_other_states"]:
                     continue
-                source, line = location(parents)
+                source, line = location(parents, trail)
                 candidate_key = (source or "", path, line or 0, tuple(step["index"] for step in trail))
                 if current["status"] == "uncovered":
                     counters["uncovered_candidates"] += 1

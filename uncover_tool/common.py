@@ -61,22 +61,29 @@ def in_scope(path, roots):
 
 def state(node, test):
     covered, coverable, raw = node.covered(test), node.coverable(test), node.status(test)
+    return state_from_facts(covered, coverable, raw)
+
+
+def display_status(covered, coverable, raw):
+    bits = raw if raw >= 0 else 0
+    if bits & (1 << STATUS_BITS["illegal"]):
+        return "illegal"
+    if bits & ((1 << STATUS_BITS["excluded_at_compile_time"]) | (1 << STATUS_BITS["excluded_at_report_time"])):
+        return "excluded"
+    if bits & (1 << STATUS_BITS["unreachable"]):
+        return "unreachable"
+    if coverable == 1 and covered in (0, 1):
+        return "covered" if covered else "uncovered"
+    return "not_scored" if coverable == 0 else "unknown"
+
+
+def state_from_facts(covered, coverable, raw):
+    """Reconstruct all independent flags from lossless native facts."""
     flags = {name: bool(raw >= 0 and raw & (1 << bit)) for name, bit in STATUS_BITS.items()}
     excluded = flags["excluded_at_compile_time"] or flags["excluded_at_report_time"]
-    if flags["illegal"]:
-        status = "illegal"
-    elif excluded:
-        status = "excluded"
-    elif flags["unreachable"]:
-        status = "unreachable"
-    elif coverable == 1 and covered in (0, 1):
-        status = "covered" if covered else "uncovered"
-    elif coverable == 0:
-        status = "not_scored"
-    else:
-        status = "unknown"
     return {"covered": covered, "coverable": coverable, "raw_status": raw,
-            "flags": flags, "excluded": excluded, "unreachable": flags["unreachable"], "status": status}
+            "flags": flags, "excluded": excluded, "unreachable": flags["unreachable"],
+            "status": display_status(covered, coverable, raw)}
 
 
 def descriptor(node):
@@ -85,8 +92,19 @@ def descriptor(node):
             "line": line if line > 0 else None}
 
 
-def location(nodes):
+def location(nodes, trail=None):
     # File and line must come from the same native object.
+    if trail is not None and len(trail) == len(nodes) - 1:
+        for step in reversed(trail):
+            if step["source_file"] and step["line"] is not None:
+                return step["source_file"], step["line"]
+        file, line = nodes[0].file_name(), nodes[0].line_no()
+        if file and line > 0:
+            return file, line
+        for step in reversed(trail):
+            if step["source_file"]:
+                return step["source_file"], None
+        return file or None, None
     for node in reversed(nodes):
         file, line = node.file_name(), node.line_no()
         if file and line > 0:
@@ -97,11 +115,13 @@ def location(nodes):
     return None, None
 
 
-def walk_bins(root, bin_type, test, missing_only=False, trail=(), parents=(), release=None):
+def walk_bins(root, bin_type, test, missing_only=False, trail=(), parents=(), release=None, with_state=False):
     """Indices are local locators, always checked against the object descriptors."""
     if root.type() == bin_type:
-        if not missing_only or state(root, test)["status"] == "uncovered":
-            yield root, trail, parents + (root,)
+        current = state(root, test) if missing_only or with_state else None
+        if not missing_only or current["status"] == "uncovered":
+            result = root, trail, parents + (root,)
+            yield (*result, current) if with_state else result
         return
     if missing_only:
         total, covered = root.coverable(test), root.covered(test)
@@ -112,7 +132,7 @@ def walk_bins(root, bin_type, test, missing_only=False, trail=(), parents=(), re
         for index, child in enumerate(children):
             try:
                 yield from walk_bins(child, bin_type, test, missing_only,
-                                     trail + ({"index": index, **descriptor(child)},), parents + (root,), release)
+                                     trail + ({"index": index, **descriptor(child)},), parents + (root,), release, with_state)
             finally:
                 if release:
                     release(child)

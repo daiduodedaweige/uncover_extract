@@ -14,3 +14,11 @@
 报告和审计中的等价检查已在清理前完成，结论不变。基准摘要里的输出路径、命令和历史审计路径保留原值；其中被删除的逐轮输出已不能直接打开或重新比较，需要使用记录的版本和参数重跑。最新保留结果仍可直接检查。
 
 清理文件清单、字节数及保留文件的校验记录见 [cleanup-record.json](cleanup-record.json)。清理仅处理 `validation/`，未自动提交。
+
+## Q1–Q4 优化验证
+
+本轮报告见 [Q1–Q4 实现与验证](comparison-q1-q4.md)，[审计摘要](comparison-q1-q4-audit.json)、[单次全设计压力对照](comparison-q1-q4-pressure.json)、[逐文件资源采样](comparison-q1-q4-resources.json)及 [URG 核验](comparison-q1-q4-urg/comparison.json)。
+
+`comparison-q1-q4-local/`、`comparison-q1-q4-nfs/`、`comparison-q1-q4-fixture-verified/` 和 `comparison-q1-q4-fixture-recheck/` 已清理重复的逐轮结果目录和日志，各组 `benchmark.json` 保留完整命令、输入指纹、源码哈希、逐次测量与等价结论。摘要中被删除的输出路径保留原值；重新逐条比较这些输出需要按记录的版本与参数重跑。10,596 目标范围的较小基准输出继续保留。
+
+全设计修改前/后成功结果仍分别位于 `comparison-q1-q4-pressure-baseline/` 和 `comparison-q1-q4-pressure-optimized/`；原生场景、缺失身份及边界场景结果、URG 核验和三个源码归档均保留。失败原生场景的 `.uncover-work-*` 副本与 SQLite 已清理，小型失败诊断继续保留。空 NFS 工作目录和 Python 字节码缓存也已清理。完整删除清单、空间统计及保留文件校验见 [本轮清理记录](comparison-q1-q4-cleanup.json)；目录外文件不在本次清理范围内。

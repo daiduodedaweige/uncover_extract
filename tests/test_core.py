@@ -2,13 +2,14 @@
 import json
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 
 from uncover_tool.cli import parser, configuration
-from uncover_tool.common import ToolError, in_scope, location, resolve, state, walk_bins
+from uncover_tool.common import ToolError, descriptor, in_scope, location, resolve, state, walk_bins
 from uncover_tool.exclusions import parse_records, render_records
 from uncover_tool.mapping import SourceMapper
-from uncover_tool.native import Inventory, PeerComparison
+from uncover_tool.native import Inventory, NativeSession, PeerComparison, scan
 
 
 class Node:
@@ -65,6 +66,65 @@ class StateTests(unittest.TestCase):
         iterator=walk_bins(root,"npiCovToggleBin",None,release=released.append)
         next(iterator);iterator.close()
         self.assertEqual(released,children)
+
+    def test_walk_state_snapshot_reads_each_leaf_once_and_keeps_legacy_shape(self):
+        reads = []
+        class Counted(Node):
+            def covered(self, test):
+                reads.append(self.name())
+                return super().covered(test)
+        leaves = [Counted("hole"), Counted("hit", covered=1), Counted("excluded", coverable=0, raw=64)]
+        root = Node("metric", kind="metric", covered=1, coverable=2, children=leaves)
+        for missing_only, expected in [(True, ["hole"]), (False, ["hole", "hit", "excluded"])]:
+            reads.clear()
+            rows = list(walk_bins(root, "npiCovToggleBin", None, missing_only=missing_only, with_state=True))
+            self.assertEqual([row[0].name() for row in rows], expected)
+            self.assertEqual(reads, ["hole", "hit", "excluded"])
+            self.assertTrue(all(row[3] == state(row[0], None) for row in rows))
+        self.assertTrue(all(len(row) == 3 for row in walk_bins(root, "npiCovToggleBin", None)))
+
+    def test_descriptor_locations_match_native_fallback_without_repeated_child_reads(self):
+        for root_file, root_line in [("root.sv", 7), (None, 0)]:
+            for parent_file, parent_line in [("parent.sv", 4), ("parent.sv", 0), (None, 99)]:
+                for child_file, child_line in [("child.sv", 5), ("child.sv", -1), (None, 99)]:
+                    nodes = [Node("root", source=root_file, line=root_line),
+                             Node("parent", source=parent_file, line=parent_line),
+                             Node("child", source=child_file, line=child_line)]
+                    trail = [{"index": 0, **descriptor(n)} for n in nodes[1:]]
+                    expected = location(nodes)
+                    def duplicate(): raise AssertionError("Repeated child source read")
+                    for node in nodes[1:]:
+                        node.file_name = node.line_no = duplicate
+                    self.assertEqual(location(nodes, trail), expected)
+
+    def test_scan_consumes_snapshot_once_in_pruned_and_complete_modes(self):
+        for complete in (False, True):
+            reads = []
+            class Counted(Node):
+                def covered(self, test):
+                    reads.append(self.name())
+                    return super().covered(test)
+            children = [Counted("hole", kind="npiCovStmtBin"),
+                        Counted("hit", kind="npiCovStmtBin", covered=1),
+                        Counted("excluded", kind="npiCovStmtBin", coverable=0, raw=64)]
+            root = Node("line", kind="metric", covered=1, coverable=2, children=children)
+            with tempfile.TemporaryDirectory() as tmp:
+                session = NativeSession({}, Path(tmp))
+                session.instances = {"top.u": Node("u")}
+                session.test, session.selected_tests = None, ["test"]
+                session.cov = SimpleNamespace(release_handle=lambda node: None)
+                session.handle = lambda path, metric: root
+                session.info = lambda path, metric: {"module_name": "unit", "model_key": "model"}
+                inventory = Inventory(Path(tmp) / "inventory.sqlite")
+                try:
+                    summary, _ = scan(session, {"metrics": ["line"], "instance_roots": [], "limit": 1,
+                        "include_other_states": complete}, inventory, SourceMapper([]), "database")
+                    self.assertEqual(reads, ["hole", "hit", "excluded"])
+                    self.assertEqual(summary["line"]["uncovered_candidates"], 1)
+                    self.assertEqual(summary["line"]["visited_atomic_bins"], 3 if complete else 1)
+                    self.assertEqual(len(list(inventory.candidates("line"))), 1)
+                finally:
+                    inventory.db.close()
 
 
 class MappingTests(unittest.TestCase):

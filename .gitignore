@@ -6,3 +6,18 @@ __pycache__/
 build/
 dist/
 .uncover-work-*/
+
+/results/
+/.venv/
+/.pytest_cache/
+
+/validation/**/*-scratch/
+/validation/**/*.sqlite
+/validation/**/*.sqlite-*
+
+# Repeated benchmark outputs; keep benchmark.json and representative results.
+/validation/**/*-[0-9]*-baseline/
+/validation/**/*-[0-9]*-optimized/
+/validation/**/*-[0-9]*-baseline.log
+/validation/**/*-[0-9]*-optimized.log
+/validation
