@@ -10,7 +10,7 @@ import shutil
 import sqlite3
 import time
 
-from .common import METRICS, display_status, in_scope, location, native_totals, require, stable_id, state_from_facts, write_json
+from .common import METRICS, display_status, in_scope, is_excluded, location, native_totals, require, stable_id, state_from_facts, write_json
 from .output import cell, source_cells, target_description
 
 
@@ -127,11 +127,43 @@ class FactStore:
     def close(self):
         self.db.close()
 
+    def discard_excluded(self):
+        """Keep exclusions for alignment, then remove them from published facts."""
+        self.flush()
+        db = self.db
+        db.create_function("is_excluded", 1, lambda raw: is_excluded(int(raw)))
+        db.executescript("""
+            CREATE TEMP TABLE excluded_states AS
+                SELECT instance,target FROM states WHERE is_excluded(raw);
+            CREATE TEMP TABLE excluded_targets (target INTEGER PRIMARY KEY);
+            INSERT INTO excluded_targets SELECT DISTINCT target FROM excluded_states;
+            DELETE FROM states WHERE (instance,target) IN (SELECT instance,target FROM excluded_states);
+            CREATE TEMP TABLE retained_targets (target INTEGER PRIMARY KEY, representative INTEGER, selected INTEGER);
+            INSERT INTO retained_targets
+                SELECT t.id,MIN(s.instance),MAX(i.selected)
+                FROM excluded_targets e JOIN targets t ON t.id=e.target
+                JOIN scopes sc ON sc.model=t.model
+                JOIN states s ON s.instance=sc.instance AND s.target=t.id
+                JOIN instances i ON i.id=s.instance GROUP BY t.id;
+            DELETE FROM targets WHERE id IN (SELECT target FROM excluded_targets)
+                AND id NOT IN (SELECT target FROM retained_targets);
+            UPDATE targets SET
+                representative=CASE WHEN EXISTS (SELECT 1 FROM states s
+                    WHERE s.instance=targets.representative AND s.target=targets.id)
+                    THEN representative ELSE (SELECT representative FROM retained_targets r WHERE r.target=targets.id) END,
+                selected=(SELECT selected FROM retained_targets r WHERE r.target=targets.id)
+                WHERE id IN (SELECT target FROM retained_targets);
+            DROP TABLE retained_targets;
+            DROP TABLE excluded_targets;
+            DROP TABLE excluded_states;
+        """)
+
 
 def analyze(session, config, stage, work, mapper, database_id, timings):
-    store = FactStore(work / "coverage_facts.sqlite", config.get("comparison_batch_size", 256))
+    store = FactStore(work / "coverage_facts.sqlite", config.get("batch_size", 256))
     try:
         result = _analyze(session, config, store, mapper, database_id, timings)
+        store.discard_excluded()
         store.flush(commit=True)
     finally:
         store.close()
@@ -183,7 +215,7 @@ def _analyze(session, config, store, mapper, database_id, timings):
             continue
         summary[metric] = {"native_covered": 0, "native_coverable": 0, "uncovered_candidates": 0,
             "visited_atomic_bins": 0, "output_count": 0, "scope_count": len(scoped), "scopes": [],
-            "nonstandard_state_inventory": "complete; compact original facts in coverage_facts.sqlite"}
+            "nonstandard_state_inventory": "non-excluded original facts in coverage_facts.sqlite"}
         active = set()
         infos = {path: session.info(path, metric) for path in paths}
         for path in scoped:
@@ -230,16 +262,17 @@ def _analyze(session, config, store, mapper, database_id, timings):
                         target = store.fallback_target(mid, sid, line, trail, iid, path in selected)
                     facts = node.covered(session.test), node.coverable(session.test), node.status(session.test)
                     store.add_state(iid, target, facts)
-                    count += 1
-                    if path in model["scoped"]:
+                    excluded = is_excluded(facts[2])
+                    count += not excluded
+                    if path in model["scoped"] and not excluded:
                         counts = summary[metric]
                         status = display_status(*facts)
                         counts["visited_atomic_bins"] += 1
                         counts["visited_" + status] = counts.get("visited_" + status, 0) + 1
                         counts["uncovered_candidates"] += status == "uncovered"
-                    if count % store.batch_size == 0:
+                    if (ordinal + 1) % store.batch_size == 0:
                         # Bound rollback journals as well as Python buffers.
-                        if count % (store.batch_size * 32) == 0:
+                        if (ordinal + 1) % (store.batch_size * 32) == 0:
                             store.flush(commit=True)
                         now = time.perf_counter()
                         if now - last_progress >= 5:
@@ -273,14 +306,18 @@ def _analyze(session, config, store, mapper, database_id, timings):
             categories, findings, patterns = [], [], {}
             for target, source in rows:
                 distribution, missing, statuses = [], [], set()
+                selected_present = False
                 for path, iid in zip(peers, ids):
                     value = facts[iid].get(target)
                     if value is None:
                         missing.append({"instance_path": path, "reason": "native target descriptor/layout differs or target absent"})
-                    else:
+                    elif not is_excluded(value[2]):
                         status = display_status(*value)
                         distribution.append((iid, status))
                         statuses.add(status)
+                        selected_present |= path in selected
+                if not selected_present:
+                    continue
                 if source not in source_errors:
                     source_errors[source] = [{"instance_path": path,
                         "reason": "definition/model identity differs or unavailable"}
@@ -320,7 +357,7 @@ def _analyze(session, config, store, mapper, database_id, timings):
             (metric,)).fetchone()[0]
         counts["output_count"] = db.execute("SELECT COUNT(*) FROM findings f JOIN targets t "
             "ON t.id=f.target JOIN models m ON m.id=t.model WHERE m.metric=?", (metric,)).fetchone()[0]
-    report = {"mode": "differences", "unique_model_targets_checked": total,
+    report = {"unique_model_targets_checked": total,
         "targets_with_state_differences": differences, "targets_with_incomparable_instances": incomparables,
         "reported_patterns": patterns, "scope": "selected model targets; same-model peers include instances outside roots",
         "facts": "coverage_facts.sqlite"}
@@ -336,6 +373,32 @@ class FactsReader:
 
     def close(self):
         self.db.close()
+
+    def uncovered_instances(self):
+        """Summarize every selected instance's holes, including common holes."""
+        selected = dict(self.db.execute("SELECT id,path FROM instances WHERE selected=1"))
+        counts = Counter()
+        # Common holes without missing/incompatible peers have no finding rows.
+        # Count only surviving instance states: peers may omit individual bins.
+        for model, instance, count in self.db.execute(
+                "SELECT t.model,s.instance,COUNT(*) FROM classifications c JOIN targets t ON t.id=c.target "
+                "JOIN scopes sc ON sc.model=t.model JOIN instances i ON i.id=sc.instance AND i.selected=1 "
+                "JOIN states s ON s.instance=sc.instance AND s.target=t.id "
+                "WHERE c.category='common_uncovered' AND c.incomparable=0 GROUP BY t.model,s.instance"):
+            counts[model, instance] = count
+        # Findings retain exact distributions, including partially aligned holes.
+        for model, distribution, count in self.db.execute("SELECT model,distribution,target_count FROM patterns"):
+            for entry in json.loads(distribution):
+                if entry["instance"] in selected and entry["status"] == "uncovered":
+                    counts[model, entry["instance"]] += count
+        names = {model: json.loads(info).get("module_name")
+                 for model, info in self.db.execute("SELECT id,info FROM models")}
+        instances = Counter()
+        for (model, instance), count in counts.items():
+            instances[names[model], selected[instance]] += count
+        return [{"module_name": name, "instance_path": path, "uncovered_count": count}
+                for (name, path), count in sorted(instances.items(), key=lambda item: (item[0][0] or "", item[0][1]))
+                if count]
 
     def details(self, kind="differences"):
         query = ("SELECT t.id,t.model,t.source,t.line,t.trail,t.representative,m.metric,m.info "
@@ -407,9 +470,12 @@ def _write_report(stage, manifest, reader):
         info = json.loads(info_json)
         counts = dict(db.execute("SELECT c.category,COUNT(*) FROM classifications c JOIN targets t ON t.id=c.target "
                                  "WHERE t.model=? GROUP BY c.category", (mid,)))
+        if not counts:
+            continue
         incompatible = db.execute("SELECT COUNT(*) FROM classifications c JOIN targets t ON t.id=c.target "
                                    "WHERE t.model=? AND c.incomparable=1", (mid,)).fetchone()[0]
-        instances = [reader.instances[r[0]] for r in db.execute("SELECT instance FROM scopes WHERE model=? ORDER BY instance", (mid,))]
+        instances = [reader.instances[r[0]] for r in db.execute(
+            "SELECT instance FROM scopes WHERE model=? AND atomic_targets>0 ORDER BY instance", (mid,))]
         models.append({"id": mid, "group_key": key, "metric": metric, "module_name": info.get("module_name"),
                        "model_id": info.get("model_key"), "instances": instances, "counts": counts,
                        "incomparable_targets": incompatible,
@@ -437,51 +503,50 @@ def _write_report(stage, manifest, reader):
                                 "line": line, "description": description, "pattern": pattern, "category": category}) + "\n")
             writer.writerow([target, model, metric, source, line, description, pattern, category])
     with (stage / "report.md").open("w", encoding="utf-8") as report:
-        report.write("# 相同 RTL 模块覆盖差异\n\n")
-        report.write(f"测试：`{cell(', '.join(manifest['selected_tests']))}`。")
-        report.write("相同模型的覆盖点只描述一次；各实例状态独立读取。\n\n")
-        comparison = manifest.get("same_rtl_comparison", {})
-        if comparison:
-            report.write(f"检查 {comparison['unique_model_targets_checked']:,} 个模型覆盖点，"
-                f"发现 {comparison['targets_with_state_differences']:,} 个状态差异点；"
-                f"{comparison['targets_with_incomparable_instances']:,} 个点存在不可比对照。\n\n")
-        report.write("| 模型组 | 模块 | 指标 | 实例数 | 状态不同 | 共同未覆盖 | 全体已覆盖 | 共同特殊状态 | 不可比目标 |\n")
-        report.write("| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |\n")
-        for model in models:
-            c = model["counts"]
-            report.write(f"| {model['id']} | {cell(model['module_name'])} | {model['metric']} | {len(model['instances'])} | "
-                f"{c.get('different', 0)} | {c.get('common_uncovered', 0)} | {c.get('all_covered', 0)} | "
-                f"{c.get('common_special', 0)} | {model['incomparable_targets']} |\n")
-        report.write("\n全体已覆盖和共同未覆盖仅列汇总；底层原生事实均保留，可单独导出。")
-        report.write("不可比计数可与状态分类重叠；状态一致但部分实例不可比的点仍在明细中。\n\n")
-        for model in models:
-            if model["comparison_status"] != "comparable":
-                reason = "模型身份不足" if model["comparison_status"] == "identity_unavailable" else "只有一个实例"
-                report.write(f"模型组 {model['id']}：{reason}，不能据此认定多个实例覆盖一致。\n\n")
+        report.write("# 存在未覆盖点的模块实例\n\n")
+        uncovered = reader.uncovered_instances()
+        if uncovered:
+            report.write("| 模块 | 实例 | 未覆盖点数 |\n| --- | --- | ---: |\n")
+            for row in uncovered:
+                report.write(f"| {cell(row['module_name'])} | `{cell(row['instance_path'])}` | {row['uncovered_count']} |\n")
+        else:
+            report.write("没有发现未覆盖的模块实例。\n")
+        report.write("\n## 分类依据\n\n")
+        report.write("按同一模块定义及覆盖模型中的同一原子覆盖点比较各实例，逐位、逐方向、逐 bin 判断，"
+                     "不按模块覆盖率或源码行合并。已覆盖表示该点已命中，未覆盖表示该点参与计分但尚未命中。\n\n")
+        report.write("| 分类 | 判断标准 |\n| --- | --- |\n"
+                     "| 全体已覆盖 | 所有可比实例均已覆盖，只计入汇总 |\n"
+                     "| 共同未覆盖 | 所有可比实例均未覆盖，只计入汇总及上方未覆盖点数 |\n"
+                     "| 实例覆盖不同 | 可比实例在同一覆盖点的状态不同，列入明细 |\n"
+                     "| 共同特殊状态 | 可比实例均为相同的不可达、不计分、非法或未知状态，列入明细 |\n\n")
+        report.write("目标缺失、定位不同或模型身份不足时标记为不可比，不算作未覆盖；"
+                     "存在不可比对照的覆盖点也列入明细。每组明细共用一份完整的实例状态分布。\n")
+        report.write("\n## 覆盖点明细\n\n")
         model_names = {model["id"]: (model["module_name"], model["metric"]) for model in models}
         labels = {"different": "实例覆盖不同", "all_covered": "已覆盖但存在不可比对照",
                   "common_uncovered": "共同未覆盖但存在不可比对照", "common_special": "共同特殊状态"}
-        state_labels = {"covered": "已覆盖", "uncovered": "未覆盖", "excluded": "已排除",
+        state_labels = {"covered": "已覆盖", "uncovered": "未覆盖",
                         "unreachable": "不可达", "illegal": "非法", "not_scored": "不计分", "unknown": "未知"}
         for pid, mid, source, category, distribution, errors, count in db.execute("SELECT * FROM patterns ORDER BY model,id"):
             name, metric = model_names[mid]
-            report.write(f"## {cell(name)} / {metric} / {labels[category]} / {count} 个覆盖点\n\n")
+            report.write(f"### {cell(name)} / {metric} / {labels[category]} / {count} 个覆盖点\n\n")
             report.write(f"模型组 {mid}，分组编号：`{pid}`。\n\n")
-            groups = defaultdict(list)
+            report.write("| 实例 | 覆盖情况 |\n| --- | --- |\n")
             for entry in json.loads(distribution):
-                groups[entry["status"]].append(reader.instances[entry["instance"]])
-            for status, paths in groups.items():
-                report.write(f"{state_labels.get(status, status)}：" + ", ".join(f"`{cell(p)}`" for p in paths) + "\n\n")
+                path = reader.instances[entry["instance"]]
+                status = state_labels.get(entry["status"], entry["status"])
+                report.write(f"| `{cell(path)}` | {cell(status)} |\n")
             for error in json.loads(errors):
-                report.write(f"不可比：`{cell(error['instance_path'])}`，{cell(error['reason'])}。\n\n")
+                report.write(f"| `{cell(error['instance_path'])}` | 不可比：{cell(error['reason'])} |\n")
+            report.write("\n")
             show_target = metric != "line"
             target_header = " 信号 / 覆盖点 / 方向 |" if show_target else ""
             target_separator = " --- |" if show_target else ""
-            report.write(f"| 目标编号 | 原始源码 | 行号 |{target_header}\n"
+            report.write(f"| 目标编号 | 源码文件 | 行号 |{target_header}\n"
                          f"| ---: | --- | ---: |{target_separator}\n")
             for target, source, path, line, trail in db.execute("SELECT t.id,t.source,s.path,t.line,t.trail FROM findings f "
                     "JOIN targets t ON t.id=f.target JOIN sources s ON s.id=t.source WHERE f.pattern=? ORDER BY t.id", (pid,)):
-                source_text, line_text = source_cells(path, line)
+                source_text, line_text = source_cells(path, line, sources[source]["mapping"], report_dir=stage)
                 target_text = f" {cell(target_description(metric, json.loads(trail)))} |" if show_target else ""
                 report.write(f"| {target} | {source_text} | {line_text} |{target_text}\n")
             report.write("\n")

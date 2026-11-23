@@ -1,19 +1,13 @@
 """Native reads and optional XML identity hints, isolated to the worker process."""
 from __future__ import annotations
 
-from collections import Counter
-from bisect import insort
 import gzip
-import json
 import os
 from pathlib import Path
-import sqlite3
 import sys
 import xml.etree.ElementTree as ET
 
-from .common import (METRICS, ToolError, in_scope, location, native_totals,
-                     require, stable_id, state, walk_bins)
-from .comparison import PeerComparison
+from .common import METRICS, ToolError, require, stable_id, walk_bins
 
 
 def read_xml(path):
@@ -131,13 +125,8 @@ class NativeSession:
             self.handles[key] = getattr(self.instances[path], METRICS[metric][0])()
         return self.handles[key]
 
-    def bins(self, path, metric, missing_only=False, with_state=False):
-        return walk_bins(self.handle(path, metric), METRICS[metric][1], self.test,
-                         missing_only=missing_only, release=self.cov.release_handle, with_state=with_state)
-
-    def release_parents(self, parents):
-        for parent in reversed(parents[1:]):
-            self.cov.release_handle(parent)
+    def bins(self, path, metric):
+        return walk_bins(self.handle(path, metric), METRICS[metric][1], release=self.cov.release_handle)
 
     def info(self, path, metric):
         key = path, metric
@@ -152,117 +141,3 @@ class NativeSession:
                 "model_key": stable_id(model) if comparable else None,
                 "sources": hint.get("sources", [inst.file_name()] if inst.file_name() else [])}
         return self.scope_info[key]
-
-
-class Inventory:
-    """Spill candidates/results to disk; full Toggle extraction need not fit in RAM."""
-    def __init__(self, path):
-        self.db = sqlite3.connect(path)
-        self.db.execute("CREATE TABLE candidates (metric TEXT, instance TEXT, source TEXT, line INTEGER, locator TEXT, record TEXT)")
-        self.db.execute("CREATE TABLE selected (seq INTEGER PRIMARY KEY, metric TEXT, record TEXT)")
-        self.db.execute("CREATE TABLE special (record TEXT)")
-
-    def add(self, record):
-        key = ".".join(f"{step['index']:012d}" for step in record["native_locator"])
-        self.db.execute("INSERT INTO candidates VALUES (?,?,?,?,?,?)", (record["metric"], record["instance_path"],
-            record["source_file"] or "", record["start_line"] or 0, key, json.dumps(record, separators=(",", ":"))))
-
-    def candidates(self, metric, limit=None):
-        sql = "SELECT record FROM candidates WHERE metric=? ORDER BY source,instance,line,locator"
-        params = [metric]
-        if limit is not None:
-            sql += " LIMIT ?"
-            params.append(limit)
-        for row in self.db.execute(sql, params):
-            yield json.loads(row[0])
-
-    def selected(self, metric=None):
-        sql, params = ("SELECT record FROM selected ORDER BY seq", ()) if metric is None else (
-            "SELECT record FROM selected WHERE metric=? ORDER BY seq", (metric,))
-        for row in self.db.execute(sql, params):
-            yield json.loads(row[0])
-
-
-def scan(session, config, inventory, mapper, database_id):
-    summary, capabilities = {}, {}
-    requested = config["metrics"]
-    metrics = requested or list(METRICS)
-    test_ref = stable_id(session.selected_tests)
-    for metric in metrics:
-        scopes = []
-        for path in sorted(session.instances):
-            if not in_scope(path, config["instance_roots"]):
-                continue
-            handle = session.handle(path, metric)
-            if handle is not None:
-                children = handle.child_handles()
-                if children:
-                    scopes.append(path)
-                for child in children:
-                    session.cov.release_handle(child)
-        # XML files only distinguish collected-empty versus absent; never decode hit bits.
-        shape_present = (session.vdb / f"snps/coverage/db/shape/{metric}.verilog.shape.xml").exists()
-        available = bool(scopes) or shape_present
-        capabilities[metric] = {"status": "available" if available else "not_collected_or_unavailable",
-                                "native_scopes": len(scopes), "native_reader": "Verdi NPI"}
-        require(available or not requested, f"Requested metric {metric} is not collected/readable in the selected instance scope")
-        if not available:
-            continue
-        counters = Counter()
-        scope_totals = []
-        limited = []
-        limit = config["limit"]
-        for number, path in enumerate(scopes, 1):
-            root = session.handle(path, metric)
-            covered, coverable = native_totals(root, session.test, session.cov.release_handle)
-            require(0 <= covered <= coverable, f"Invalid native totals for {path}/{metric}: {covered}/{coverable}")
-            counters["native_covered"] += covered
-            counters["native_coverable"] += coverable
-            scope_totals.append({"instance_path": path, "covered": covered, "coverable": coverable})
-            info = session.info(path, metric)
-            for node, trail, parents, current in session.bins(path, metric,
-                    missing_only=not config["include_other_states"], with_state=True):
-                counters["visited_atomic_bins"] += 1
-                counters["visited_" + current["status"]] += 1
-                if current["status"] != "uncovered" and not config["include_other_states"]:
-                    continue
-                source, line = location(parents, trail)
-                candidate_key = (source or "", path, line or 0, tuple(step["index"] for step in trail))
-                if current["status"] == "uncovered":
-                    counters["uncovered_candidates"] += 1
-                    # Count every candidate, but retain only the deterministic prefix when limited.
-                    if limit is not None and len(limited) >= limit and candidate_key >= limited[-1][0]:
-                        continue
-                identity = [database_id, test_ref, path, metric, list(trail)]
-                record = {"target_id": stable_id(identity), "database_id": database_id, "test_scope_ref": test_ref,
-                    "metric": metric, "scope_kind": "instance_self", "instance_path": path,
-                    "module_name": info["module_name"], "model_id": info["model_key"],
-                    "source_file": source, "start_line": line, "end_line": line,
-                    "source_mapping": mapper.map(source), "native_locator": list(trail),
-                    "target": {"bin_name": node.name(), "objects": list(trail),
-                               "description": " / ".join(str(d["name"]) for d in trail)}, **current}
-                if metric == "tgl":
-                    record["target"]["direction"] = node.name()
-                    record["target"]["signal"] = next((p.name() for p in reversed(parents[:-1]) if p.type() in ("npiCovSignalBit", "npiCovSignal")), None)
-                if current["status"] == "uncovered":
-                    if limit is None:
-                        inventory.add(record)
-                    else:
-                        insort(limited, (candidate_key, record), key=lambda pair: pair[0])
-                        if len(limited) > limit:
-                            limited.pop()
-                elif config["include_other_states"] and current["status"] not in ("covered",):
-                    inventory.db.execute("INSERT INTO special VALUES (?)", (json.dumps(record, separators=(",", ":")),))
-            if number % 50 == 0:
-                inventory.db.commit()
-                print(f"{metric}: scanned {number}/{len(scopes)} instance scopes, {counters['uncovered_candidates']} holes", flush=True)
-        for _, record in limited:
-            inventory.add(record)
-        inventory.db.commit()
-        summary[metric] = {**dict(counters), "uncovered_candidates": counters["uncovered_candidates"],
-            "native_covered": counters["native_covered"], "native_coverable": counters["native_coverable"],
-            "scope_count": len(scopes), "scopes": scope_totals,
-            "nonstandard_state_inventory": "complete" if config["include_other_states"] else "not_requested; fully scored/zero-count subtrees pruned"}
-        print(f"{metric}: {counters['uncovered_candidates']} uncovered atomic targets", flush=True)
-    require(summary, "No implemented Verilog/SystemVerilog metrics are available in this VDB/scope")
-    return summary, capabilities

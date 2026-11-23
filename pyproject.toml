@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "uncover-extract"
-version = "0.1.0"
-description = "Instance-local Synopsys VDB coverage hole extraction using Verdi NPI"
+version = "0.2.0"
+description = "Synopsys VDB coverage facts and RTL instance differences using Verdi NPI"
 requires-python = ">=3.10"
 dependencies = []
 

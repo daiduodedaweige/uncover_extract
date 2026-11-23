@@ -17,12 +17,10 @@ from .common import METRICS, ToolError, require, write_json
 
 
 def parser():
-    p = argparse.ArgumentParser(description="Extract instance-local VDB coverage holes; NPI reads use an isolated copy.")
+    p = argparse.ArgumentParser(description="Analyze VDB coverage by RTL model; retain complete native facts and report instance differences.")
     p.add_argument("--version", action="version", version=__version__)
     p.add_argument("--vdb", required=True, type=Path)
     p.add_argument("--out", required=True, type=Path)
-    p.add_argument("--mode", choices=["holes", "differences"], default="holes",
-                   help="holes: instance hole extraction; differences: independent module comparison")
     p.add_argument("--rtl-root", action="append", default=[], type=Path)
     p.add_argument("--path-map", action="append", default=[], nargs=2, metavar=("OLD_PREFIX", "NEW_PREFIX"))
     p.add_argument("--instance-root", action="append", default=[])
@@ -31,19 +29,11 @@ def parser():
     tests.add_argument("--tests", nargs="+")
     tests.add_argument("--all-tests", action="store_true")
     p.add_argument("--exclude-file", action="append", default=[], type=Path, help="apply existing external exclusions before extraction")
-    p.add_argument("--limit-per-metric", "--limit", type=int, help="positive output limit per metric; omit for all holes")
-    p.add_argument("--compare-peers", choices=["none", "selected", "all"], default="selected")
-    p.add_argument("--comparison-batch-size", type=int, default=256, help="maximum output targets per comparison batch")
-    p.add_argument("--comparison-cache-entries", type=int, default=1024, help="memory LRU entries; other comparison snapshots spill to SQLite")
-    p.add_argument("--profile-comparison", action="store_true", help="count native comparison child-handle operations")
-    p.add_argument("--include-other-states", action="store_true", help="exhaustively inventory nonstandard atomic states as gzip JSONL (slower)")
-    p.add_argument("--per-metric", action="store_true")
-    p.add_argument("--export-exclusions", action="store_true")
-    p.add_argument("--validate-exclusions", action="store_true")
+    p.add_argument("--batch-size", type=int, default=256, help="bounded native fact batches (1 to 500)")
     p.add_argument("--validate-urg", action="store_true", help="independent full-design URG totals check before publishing")
     p.add_argument("--urg-bin", default=shutil.which("urg"), help="URG executable (only required with --validate-urg)")
     p.add_argument("--verdi-home", type=Path, default=os.environ.get("VERDI_HOME", "/nfs/tools/synopsys/verdi/U-2023.03"))
-    p.add_argument("--work-dir", type=Path, help="scratch disk; differences defaults to the local temporary directory")
+    p.add_argument("--work-dir", type=Path, default=Path(tempfile.gettempdir()), help="scratch disk (default: system temporary directory)")
     p.add_argument("--timeout", type=int, default=3600, help="native worker timeout in seconds (default: 3600)")
     p.add_argument("--overwrite", action="store_true")
     return p
@@ -57,16 +47,8 @@ def configuration(args):
     package = Path(__file__).resolve().parent.parent
     require(out != package and out not in package.parents, "Output cannot replace the tool source directory or its parent")
     require(not args.out.is_symlink(), "Output directory must not be a symbolic link")
-    require(args.limit_per_metric is None or args.limit_per_metric > 0, "--limit-per-metric must be positive")
     require(args.timeout > 0, "--timeout must be positive")
-    require(args.comparison_batch_size > 0, "--comparison-batch-size must be positive")
-    require(args.comparison_cache_entries >= 0, "--comparison-cache-entries must be nonnegative")
-    if args.mode == "differences":
-        require(args.compare_peers != "none", "differences mode requires instance comparison")
-        require(args.limit_per_metric is None, "--limit-per-metric applies to holes mode; differences checks every target")
-        require(not (args.export_exclusions or args.validate_exclusions),
-                "Candidate exclusion export/validation requires --mode holes")
-        require(not args.per_metric, "--per-metric applies to holes mode; differences outputs include their metric")
+    require(1 <= args.batch_size <= 500, "--batch-size must be between 1 and 500")
     require(not args.validate_urg or not args.instance_root, "--validate-urg currently requires the complete design (omit --instance-root)")
     require(not args.validate_urg or args.urg_bin, "URG not found; set --urg-bin")
     for root in args.rtl_root:
@@ -81,8 +63,8 @@ def configuration(args):
         require(out not in path.resolve().parents, "Exclusion input cannot live inside the replaced output directory")
     if args.work_dir:
         work = args.work_dir.resolve()
-        require(work != vdb and vdb not in work.parents and work not in vdb.parents,
-                "Work directory and input VDB must not overlap")
+        require(work != vdb and vdb not in work.parents,
+                "Work directory cannot be the input VDB or inside it")
         require(work != out and out not in work.parents, "Work directory cannot be inside final output")
     if out.exists():
         require(out.is_dir(), f"Output is not a directory: {out}")
@@ -94,26 +76,21 @@ def configuration(args):
                 require(json.loads(marker.read_text()).get("tool") == "uncover-extract", "Existing output is not owned by uncover-extract")
             except (ValueError, OSError) as exc:
                 raise ToolError(f"Invalid previous manifest: {exc}") from exc
-    return {"vdb": str(vdb), "out": str(out), "mode": args.mode,
+    return {"vdb": str(vdb), "out": str(out),
         "rtl_roots": [str(p.resolve()) for p in args.rtl_root],
         "path_maps": [[old.rstrip("/"), str(Path(new).resolve())] for old, new in args.path_map],
         "instance_roots": args.instance_root, "metrics": list(dict.fromkeys(args.metrics)) if args.metrics else None,
         "tests": args.tests, "all_tests": args.all_tests, "exclude_files": [str(p.resolve()) for p in args.exclude_file],
-        "limit": args.limit_per_metric, "compare_peers": args.compare_peers, "per_metric": args.per_metric,
-        "comparison_batch_size": args.comparison_batch_size, "comparison_cache_entries": args.comparison_cache_entries,
-        "profile_comparison": args.profile_comparison,
-        "include_other_states": args.include_other_states, "export_exclusions": args.export_exclusions,
-        "validate_exclusions": args.validate_exclusions, "verdi_home": str(args.verdi_home.resolve()),
+        "batch_size": args.batch_size, "verdi_home": str(args.verdi_home.resolve()),
         "validate_urg": args.validate_urg, "urg_bin": args.urg_bin,
-        "work_dir": str(args.work_dir.resolve()) if args.work_dir else (
-            tempfile.gettempdir() if args.mode == "differences" else None)}
+        "work_dir": str(args.work_dir.resolve())}
 
 
 def execute(config, timeout):
     out = Path(config["out"])
     out.parent.mkdir(parents=True, exist_ok=True)
     stage = Path(tempfile.mkdtemp(prefix=f".{out.name}.running-", dir=out.parent))
-    work_parent = Path(config["work_dir"]) if config["work_dir"] else out.parent
+    work_parent = Path(config["work_dir"])
     work_parent.mkdir(parents=True, exist_ok=True)
     scratch = Path(tempfile.mkdtemp(prefix=".uncover-work-", dir=work_parent))
     config = {**config, "scratch_dir": str(scratch)}

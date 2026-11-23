@@ -40,24 +40,24 @@ class SourceMapper:
                     if path.is_file():
                         candidates.add(path.resolve())
             method = "explicit_prefix_map"
-        else:
-            if original.is_absolute() and original.is_file():
-                candidates.add(original.resolve())
-                method = "original_path"
-            if not candidates:
-                # Prefer the longest matching relative suffix under configured roots.
-                parts = [part for part in original.parts if part not in ("/", ".", "..")]
-                for length in range(len(parts), 0, -1):
-                    for root in self.roots:
-                        path = root.joinpath(*parts[-length:])
-                        if path.is_file():
-                            candidates.add(path.resolve())
-                    if candidates:
-                        method = "relative_suffix"
-                        break
+        elif self.roots:
+            # Configured RTL roots own source navigation, even when an old
+            # compilation path still exists on this machine.
+            parts = [part for part in original.parts if part not in ("/", ".", "..")]
+            for length in range(len(parts), 0, -1):
+                for root in self.roots:
+                    path = root.joinpath(*parts[-length:])
+                    if path.is_file():
+                        candidates.add(path.resolve())
+                if candidates:
+                    method = "relative_suffix"
+                    break
             if not candidates:
                 candidates = self.by_name.get(original.name, set()).copy()
                 method = "unique_basename_candidate"
+        elif original.is_absolute() and original.is_file():
+            candidates.add(original.resolve())
+            method = "original_path"
         result["candidates"] = [str(p) for p in sorted(candidates)]
         result["method"] = method
         if len(candidates) == 1:

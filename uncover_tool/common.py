@@ -64,11 +64,16 @@ def state(node, test):
     return state_from_facts(covered, coverable, raw)
 
 
+def is_excluded(raw):
+    return raw >= 0 and bool(raw & ((1 << STATUS_BITS["excluded_at_compile_time"]) |
+                                    (1 << STATUS_BITS["excluded_at_report_time"])))
+
+
 def display_status(covered, coverable, raw):
     bits = raw if raw >= 0 else 0
     if bits & (1 << STATUS_BITS["illegal"]):
         return "illegal"
-    if bits & ((1 << STATUS_BITS["excluded_at_compile_time"]) | (1 << STATUS_BITS["excluded_at_report_time"])):
+    if is_excluded(raw):
         return "excluded"
     if bits & (1 << STATUS_BITS["unreachable"]):
         return "unreachable"
@@ -115,24 +120,17 @@ def location(nodes, trail=None):
     return None, None
 
 
-def walk_bins(root, bin_type, test, missing_only=False, trail=(), parents=(), release=None, with_state=False):
-    """Indices are local locators, always checked against the object descriptors."""
+def walk_bins(root, bin_type, trail=(), parents=(), release=None):
+    """Walk full native descriptors; child handles stay local to this traversal."""
     if root.type() == bin_type:
-        current = state(root, test) if missing_only or with_state else None
-        if not missing_only or current["status"] == "uncovered":
-            result = root, trail, parents + (root,)
-            yield (*result, current) if with_state else result
+        yield root, trail, parents + (root,)
         return
-    if missing_only:
-        total, covered = root.coverable(test), root.covered(test)
-        if total == 0 or (total > 0 and covered == total):
-            return
     children = root.child_handles()
     try:
         for index, child in enumerate(children):
             try:
-                yield from walk_bins(child, bin_type, test, missing_only,
-                                     trail + ({"index": index, **descriptor(child)},), parents + (root,), release, with_state)
+                yield from walk_bins(child, bin_type,
+                                     trail + ({"index": index, **descriptor(child)},), parents + (root,), release)
             finally:
                 if release:
                     release(child)
@@ -142,120 +140,6 @@ def walk_bins(root, bin_type, test, missing_only=False, trail=(), parents=(), re
             for child in children:
                 if child is not None:
                     release(child)
-
-
-def resolve(root, trail, release=None, counters=None, progress=None):
-    parents = [root]
-    try:
-        for step in trail:
-            if progress is not None:
-                progress()
-            children = root.child_handles()
-            if counters is not None:
-                counters["child_handles_calls"] += 1
-                counters["returned_child_handles"] += len(children)
-            index = step["index"]
-            if not 0 <= index < len(children):
-                if release:
-                    for child in children: release(child)
-                raise ToolError("Incompatible model: native child count changed")
-            root = children[index]
-            if release:
-                for i, child in enumerate(children):
-                    if i != index: release(child)
-            parents.append(root)
-            require(descriptor(root) == {k: v for k, v in step.items() if k != "index"},
-                    "Incompatible model: native target descriptor changed")
-    except BaseException:
-        if release:
-            for parent in reversed(parents[1:]): release(parent)
-        raise
-    return root, parents
-
-
-def locator_key(trail):
-    return tuple(step["index"] for step in trail)
-
-
-def read_targets(root, targets, test, release, counters=None, progress=None, strategy="auto"):
-    """Read snapshots through a descriptor-checked trie, owning only its children.
-
-    Call only when no other traversal owns aliases of these handles. Results
-    contain plain data; every returned child handle is released on all exits.
-    """
-    require(strategy in ("auto", "single", "batch"), "Unknown locator strategy")
-    if strategy == "single" or (strategy == "auto" and len(targets) == 1):
-        if counters is None:
-            release_owned = release
-        else:
-            def release_owned(node):
-                release(node)
-                counters["released_child_handles"] += 1
-        results = {}
-        for key, trail in targets.items():
-            try:
-                node, parents = resolve(root, trail, release_owned, counters, progress)
-            except ToolError as exc:
-                results[key] = {"error": str(exc)}
-                continue
-            try:
-                results[key] = state(node, test)
-            finally:
-                for parent in reversed(parents[1:]):
-                    release_owned(parent)
-        return results
-
-    tree = {"ends": [], "children": {}}
-    for key, trail in targets.items():
-        branch = tree
-        for step in trail:
-            expected = tuple(sorted((k, v) for k, v in step.items() if k != "index"))
-            variants = branch["children"].setdefault(step["index"], {})
-            branch = variants.setdefault(expected, {"ends": [], "children": {}})
-        branch["ends"].append(key)
-    results = {}
-
-    def fail(branch, reason):
-        for key in branch["ends"]:
-            results[key] = {"error": reason}
-        for variants in branch["children"].values():
-            for sub in variants.values():
-                fail(sub, reason)
-
-    def visit(node, branch):
-        if progress is not None:
-            progress()
-        if branch["ends"]:
-            value = state(node, test)
-            for key in branch["ends"]:
-                results[key] = value
-        if not branch["children"]:
-            return
-        children = node.child_handles()
-        if counters is not None:
-            counters["child_handles_calls"] += 1
-            counters["returned_child_handles"] += len(children)
-        try:
-            for index, variants in branch["children"].items():
-                if not 0 <= index < len(children):
-                    for sub in variants.values():
-                        fail(sub, "Incompatible model: native child count changed")
-                    continue
-                child = children[index]
-                actual = tuple(sorted(descriptor(child).items()))
-                for expected, sub in variants.items():
-                    if expected != actual:
-                        fail(sub, "Incompatible model: native target descriptor changed")
-                    else:
-                        visit(child, sub)
-        finally:
-            for child in children:
-                release(child)
-                if counters is not None:
-                    counters["released_child_handles"] += 1
-
-    visit(root, tree)
-    return results
 
 
 def native_totals(handle, test, release=None):
