@@ -22,6 +22,7 @@ from .mapping import SourceMapper
 from .native import Inventory, NativeSession, PeerComparison, scan
 from .comparison import TargetInventory, expand_state
 from .output import write_results
+from .differences import analyze as analyze_differences, write_report as write_difference_report
 
 
 def batches(rows, size):
@@ -114,6 +115,56 @@ def all_comparisons(session, config, stage, summary, database_id, inventory, com
             "scope": "all atomic targets under requested instance roots; compatible peers may be outside roots"}
 
 
+def extract_holes(session, config, stage, work, inventory, mapper, database_id, timings, comparison_cleanup):
+    tick = time.perf_counter()
+    summary, capabilities = scan(session, config, inventory, mapper, database_id)
+    timings["scan_seconds"] = time.perf_counter() - tick
+    tick = time.perf_counter()
+    peer_comparison = None
+    comparison_stats = {"mode": "none"}
+    if config["compare_peers"] != "none":
+        print("comparison: building instance/model index", flush=True)
+        peer_comparison = PeerComparison(session, metrics=summary, cache_path=work / "comparison.sqlite",
+            cache_entries=config.get("comparison_cache_entries", 1024),
+            batch_size=config.get("comparison_batch_size", 256), profile=config.get("profile_comparison", False))
+        comparison_cleanup.callback(peer_comparison.close)
+    for metric, counts in summary.items():
+        output_count = 0
+        total = counts["uncovered_candidates"]
+        if config["limit"] is not None:
+            total = min(total, config["limit"])
+        progress = ComparisonProgress("selected " + metric, total) if peer_comparison else None
+        for batch in batches(inventory.candidates(metric, config["limit"]), config.get("comparison_batch_size", 256)):
+            if peer_comparison:
+                peer_comparison.attach_many(batch)
+            inventory.db.executemany("INSERT INTO selected (metric,record) VALUES (?,?)",
+                ((metric, json.dumps(record)) for record in batch))
+            output_count += len(batch)
+            inventory.db.commit()
+            if peer_comparison:
+                peer_comparison.cache.flush(commit=True)
+            if progress:
+                progress.update(output_count, peer_comparison)
+        if progress:
+            progress.update(output_count, peer_comparison, force=True)
+        counts["output_count"] = output_count
+    inventory.db.commit()
+    comparison_report = {"mode": config["compare_peers"], "scope": "only output targets"}
+    if config["compare_peers"] == "all":
+        comparison_report = all_comparisons(session, config, stage, summary, database_id, inventory, peer_comparison)
+        timings["comparison_output_seconds"] = peer_comparison.stats["gzip_output_seconds"]
+    if peer_comparison:
+        comparison_stats = peer_comparison.report()
+        # Exclusion export mutates native states. No cached facts survive it.
+        cleanup_started = time.perf_counter()
+        print("comparison: clearing session cache", flush=True)
+        peer_comparison.close()
+        inventory.db.commit()
+        timings["comparison_cache_cleanup_seconds"] = time.perf_counter() - cleanup_started
+    timings["selection_and_comparison_seconds"] = time.perf_counter() - tick
+    return summary, capabilities, comparison_report, comparison_stats
+
+
 def run(config, stage):
     started = time.perf_counter()
     timings = {}
@@ -139,51 +190,12 @@ def run(config, stage):
                 with NativeSession(config, copied) as session, ExitStack() as comparison_cleanup:
                     timings["native_session_seconds"] = time.perf_counter() - tick
                     tick = time.perf_counter()
-                    summary, capabilities = scan(session, config, inventory, mapper, before["sha256"])
-                    timings["scan_seconds"] = time.perf_counter() - tick
-                    tick = time.perf_counter()
-                    peer_comparison = None
-                    comparison_stats = {"mode": "none"}
-                    if config["compare_peers"] != "none":
-                        print("comparison: building instance/model index", flush=True)
-                        peer_comparison = PeerComparison(session, metrics=summary, cache_path=work / "comparison.sqlite",
-                            cache_entries=config.get("comparison_cache_entries", 1024),
-                            batch_size=config.get("comparison_batch_size", 256), profile=config.get("profile_comparison", False))
-                        comparison_cleanup.callback(peer_comparison.close)
-                    for metric, counts in summary.items():
-                        output_count = 0
-                        total = counts["uncovered_candidates"]
-                        if config["limit"] is not None:
-                            total = min(total, config["limit"])
-                        progress = ComparisonProgress("selected " + metric, total) if peer_comparison else None
-                        for batch in batches(inventory.candidates(metric, config["limit"]), config.get("comparison_batch_size", 256)):
-                            if peer_comparison:
-                                peer_comparison.attach_many(batch)
-                            inventory.db.executemany("INSERT INTO selected (metric,record) VALUES (?,?)",
-                                ((metric, json.dumps(record)) for record in batch))
-                            output_count += len(batch)
-                            inventory.db.commit()
-                            if peer_comparison:
-                                peer_comparison.cache.flush(commit=True)
-                            if progress:
-                                progress.update(output_count, peer_comparison)
-                        if progress:
-                            progress.update(output_count, peer_comparison, force=True)
-                        counts["output_count"] = output_count
-                    inventory.db.commit()
-                    comparison_report = {"mode": config["compare_peers"], "scope": "only output targets"}
-                    if config["compare_peers"] == "all":
-                        comparison_report = all_comparisons(session, config, stage, summary, before["sha256"], inventory, peer_comparison)
-                        timings["comparison_output_seconds"] = peer_comparison.stats["gzip_output_seconds"]
-                    if peer_comparison:
-                        comparison_stats = peer_comparison.report()
-                        # Exclusion export mutates native states. No cached facts survive it.
-                        cleanup_started = time.perf_counter()
-                        print("comparison: clearing session cache", flush=True)
-                        peer_comparison.close()
-                        inventory.db.commit()
-                        timings["comparison_cache_cleanup_seconds"] = time.perf_counter() - cleanup_started
-                    timings["selection_and_comparison_seconds"] = time.perf_counter() - tick
+                    if config.get("mode", "holes") == "differences":
+                        summary, capabilities, comparison_report, comparison_stats = analyze_differences(
+                            session, config, stage, work, mapper, before["sha256"], timings)
+                    else:
+                        summary, capabilities, comparison_report, comparison_stats = extract_holes(
+                            session, config, stage, work, inventory, mapper, before["sha256"], timings, comparison_cleanup)
                     validation = {"status": "not_requested"}
                     export_result = {"status": "not_requested"}
                     tick = time.perf_counter()
@@ -229,12 +241,19 @@ def run(config, stage):
                                     "Missing/unmapped RTL never removes a native coverage fact"]}
                 print("output: writing JSON, CSV and report", flush=True)
                 tick = time.perf_counter()
-                write_results(stage, inventory, manifest, config["per_metric"], config["include_other_states"])
+                if config.get("mode", "holes") == "differences":
+                    write_difference_report(stage, manifest)
+                else:
+                    write_results(stage, inventory, manifest, config["per_metric"], config["include_other_states"])
                 timings["output_seconds"] = time.perf_counter() - tick
                 timings["output_total_seconds"] = timings["output_seconds"] + timings.get("comparison_output_seconds", 0)
                 print(f"output: finished in {timings['output_seconds']:.2f}s", flush=True)
                 manifest["performance"]["total_seconds"] = time.perf_counter() - started
                 manifest["performance"]["peak_rss_kib"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+                manifest["outputs"] = sorted(p.name for p in stage.iterdir() if p.is_file())
+                if "analysis_manifest.json" not in manifest["outputs"]:
+                    manifest["outputs"].append("analysis_manifest.json")
+                    manifest["outputs"].sort()
                 write_json(stage / "analysis_manifest.json", manifest)
                 print(json.dumps({"status": "success", "records_per_metric": {m: s["output_count"] for m, s in summary.items()},
                                   "seconds": manifest["performance"]["total_seconds"]}), flush=True)

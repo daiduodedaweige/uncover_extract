@@ -2,6 +2,8 @@
 
 从 Synopsys VDB 提取实例本层的 Line、Toggle、Branch、Condition 未覆盖原子目标，输出源码位置、完整实例路径、原始状态及兼容实例对照。输入工程、RTL 路径、测试集合和输出目录均通过参数指定。
 
+需要分析“相同 RTL 的实例为什么覆盖不同”时，使用 `--mode differences`：独立扫描模型覆盖点，只为差异、特殊状态和不可比情况生成明细，并保留可离线导出的紧凑原始状态库。
+
 提取在 VDB 副本上运行，完成后核对原始 VDB 全部文件的 SHA-256。普通提取不执行排除导出或排除验证。已验证环境为 Linux、Python 3.10、Verdi/VCS/URG U-2023.03；其他版本需要验证后再声明兼容。
 
 ## 1. 直接使用
@@ -13,6 +15,14 @@ cd /nfs/home/weijing/workspace/uncover_extract
 
 # 查看参数，不需要启动 NPI 或使用许可证。
 python3 uncover_extract.py --help
+
+# 相同 RTL 模块的四指标覆盖差异；不生成数百万条实例空洞主项。
+# 工作区默认使用系统临时盘，也可显式设置 --work-dir。
+python3 uncover_extract.py \
+  --mode differences \
+  --vdb merged0608.vdb --rtl-root rtl \
+  --out results/module-differences \
+  --metrics line tgl branch cond
 
 # 当前工程：每个指标输出前 10 个目标，仍统计所选实例范围的全部目标。
 python3 uncover_extract.py \
@@ -33,6 +43,8 @@ python3 uncover_extract.py \
 入口可以使用绝对路径，从任意目录运行。输出目录必须与输入 VDB、RTL 根目录分离；默认拒绝覆盖已有结果，更新同一结果目录时显式添加 `--overwrite`。
 
 **省略 `--limit-per-metric` 就是全量输出。** 当前工程约有 695 万个未覆盖 Toggle 方向目标，全量输出及实例对照会产生大量数据。先按指标、实例范围或限量查看结果更便于核查。限量不减少扫描范围，耗时和完整计数会写入 manifest。
+
+上述限量规则适用于默认的 `--mode holes`。`differences` 始终检查所选范围的全部模型覆盖点，不接受 `--limit-per-metric`；对照实例可以位于 `--instance-root` 范围外。该模式默认在本地临时盘保存中间数据，结果目录仍由 `--out` 指定。
 
 ## 2. 换工程、选择测试与映射源码
 
@@ -64,6 +76,41 @@ python3 uncover_extract.py \
 
 ## 3. 输出内容
 
+`--mode differences` 输出：
+
+| 文件 | 内容 |
+| --- | --- |
+| `report.md` | 模块汇总，以及按确切实例状态分布归类的差异和不可比明细 |
+| `module_summary.json` | 模型组、实例/源码目录、全体已覆盖、共同未覆盖、差异及特殊状态计数 |
+| `differences.csv`、`differences.jsonl.gz` | 每个模型覆盖点一条明细，引用实例状态分组，不按未覆盖实例重复展开 |
+| `difference_patterns.jsonl.gz` | 各分组的实例状态分布和不可比原因 |
+| `coverage_facts.sqlite` | 共享的完整原生定位，以及逐实例 `covered/coverable/raw_status`，供追溯和离线导出 |
+| `analysis_manifest.json`、`execution.log` | 输入指纹、测试、范围、原生统计、验证状态和性能 |
+
+所有实例都已覆盖的点只进入汇总，不逐点报告；共同未覆盖也仅汇总，需要时离线导出。展示状态相同但原始标志不同不会自动计为差异，原始值仍保留。单实例或模型身份不足的组会明确标记；特殊状态和无法对齐的对照不会被当成普通未覆盖。
+
+离线导出无需 NPI 或许可证，不会重新扫描 VDB：
+
+```bash
+# 为差异/特殊状态/不可比目标展开完整定位和逐实例原始状态。
+python3 -m uncover_tool.export_facts \
+  --result results/module-differences --kind differences \
+  --out results/difference-details.jsonl.gz
+
+# 还原所选实例的全部常规未覆盖目标及原始目标 ID。
+python3 -m uncover_tool.export_facts \
+  --result results/module-differences --kind holes \
+  --out results/all-holes.jsonl.gz
+
+# 展开所有可比实例都未覆盖的点，每个模型目标一条。
+python3 -m uncover_tool.export_facts \
+  --result results/module-differences --kind common-uncovered \
+  --out results/common-uncovered.jsonl.gz
+```
+
+`holes` 离线导出保留目标身份和原始事实，采用模型目标/实例顺序，不承诺与旧主项的源码排序一致，也不附加重复的全组对照。模块差异模式不执行候选排除导出/验证；这些操作继续使用 `--mode holes`。`--validate-urg` 可用于两种模式。
+
+默认的 `--mode holes` 输出：
 
 | 文件                      | 内容                                                                                 |
 | --------------------------- | -------------------------------------------------------------------------------------- |
@@ -81,6 +128,8 @@ python3 uncover_extract.py \
 - `--comparison-batch-size N`：每批比较的主项数，默认 `256`；共享目标路径在一批内只展开一次。
 - `--comparison-cache-entries N`：内存比较缓存的条目上限，默认 `1024`；其余快照保存在工作区 SQLite，设为 `0` 时仅使用磁盘缓存。
 - `--profile-comparison`：额外统计比较期间的原生子句柄调用、返回和释放数量，用于性能分析，默认关闭。
+
+上述 `--compare-peers`、比较缓存和定位诊断参数用于 `holes` 路径。`differences` 独立比较全部模型目标，`--comparison-batch-size` 控制有界状态读写批次，最大 500；不使用旧的结果 LRU 或按目标重新定位路径。
 
 覆盖状态、排除状态和不可达标记分别保存。常规清单只包含可计分且未命中的目标，排除和不可达对象不自动计为未覆盖。Toggle 按信号位及方向，Branch/Condition 按工具建立的 bin，Line 保留语句目标和所属 Block。
 
@@ -155,6 +204,8 @@ rtl/                    当前工程的 RTL
 工具入口、脚本、文档和验证结果均位于项目根目录，与当前工程的 VDB、RTL 同级。脚本根据自身位置定位项目目录，可以从其他工作目录通过绝对路径调用。
 
 字段含义、统计口径与内部流程见 [输出格式](docs/输出格式.md)。保留的最新结果包括 [全设计 Toggle 验证](validation/comparison-next-toggle-full-all/report.md)、[四指标 fixture 样本](validation/comparison-next-scenarios/full/report.md)及[性能验证报告](validation/comparison-continuation.md)。
+
+独立模块差异分析的实现、验证和性能见 [模块差异分析](docs/模块差异分析.md)，实际四指标报告见 [本次全设计结果](validation/module-differences-full/report.md)。
 
 `validation/` 保留报告、审计摘要、各组 `benchmark.json` 和最新原生/全设计验证结果。旧版、探测、失败运行及基准逐轮重复输出已清理，历史命令和测量数据仍保存在摘要中；重新核对已删除运行的原始输出需要重跑。留存范围见 [验证资料说明](validation/README.md)。保留结果中的运行配置和原生定位仍记录当时的路径。
 

@@ -29,7 +29,7 @@ def csv_rows(path, rows):
         writer = csv.writer(stream)
         writer.writerow(fields)
         for row in rows:
-            writer.writerow([*(row.get(k) for k in fields[:10]), row["target"]["description"],
+            writer.writerow([*(row.get(k) for k in fields[:10]), target_description(row["metric"], row["native_locator"]),
                              row["source_mapping"]["path"], row["source_mapping"]["status"]])
 
 
@@ -37,9 +37,16 @@ def cell(value):
     return str(value if value is not None else "未知").replace("|", "&#124;").replace("\n", " ").replace("`", "&#96;")
 
 
-def write_results(stage, inventory, manifest, per_metric=False, include_other_states=False):
-    json_rows(stage / "uncovered_coverage.json", inventory.selected())
-    csv_rows(stage / "uncovered_coverage.csv", inventory.selected())
+def source_cells(source, line):
+    return cell(source), cell(line)
+
+
+def target_description(metric, trail):
+    """Line targets are located by their existing line column, not block names."""
+    return "" if metric == "line" else " / ".join(str(step["name"]) for step in trail)
+
+
+def write_report(stage, rows, manifest):
     with (stage / "report.md").open("w", encoding="utf-8") as stream:
         stream.write("# 未覆盖信息\n\n")
         stream.write(f"数据库：`{cell(manifest['input']['path'])}`。测试：`{cell(', '.join(manifest['selected_tests']))}`。\n\n")
@@ -48,14 +55,27 @@ def write_results(stage, inventory, manifest, per_metric=False, include_other_st
         for metric, counts in manifest["summary"].items():
             stream.write(f"| {metric} | {counts['native_covered']}/{counts['native_coverable']} | {counts['uncovered_candidates']} | {counts['output_count']} |\n")
         stream.write("\n覆盖率采用原生计分值；限量仅影响输出主项。缺少源码不影响覆盖目标保留。\n\n")
-        stream.write("| 序号 | 指标 | 原始源码 | 行号 | 实例 | 状态 | 具体目标 |\n| ---: | --- | --- | ---: | --- | --- | --- |\n")
-        for number, row in enumerate(inventory.selected(), 1):
-            stream.write(f"| {number} | {row['metric']} | {cell(row['source_file'])} | {cell(row['start_line'])} | `{cell(row['instance_path'])}` | 未覆盖 | {cell(row['target']['description'])} |\n")
+        show_target = any(metric != "line" for metric in manifest["summary"])
+        target_header = " 具体目标 |" if show_target else ""
+        target_separator = " --- |" if show_target else ""
+        stream.write(f"| 序号 | 指标 | 原始源码 | 行号 | 实例 | 状态 |{target_header}\n"
+                     f"| ---: | --- | --- | ---: | --- | --- |{target_separator}\n")
+        for number, row in enumerate(rows, 1):
+            source, line = source_cells(row['source_file'], row['start_line'])
+            target = f" {cell(target_description(row['metric'], row['native_locator']))} |" if show_target else ""
+            stream.write(f"| {number} | {row['metric']} | {source} | {line} | `{cell(row['instance_path'])}` | 未覆盖 |{target}\n")
             for peer in row.get("same_rtl_coverage", {}).get("instances", []):
                 if peer["instance_path"] != row["instance_path"]:
-                    stream.write(f"| | {row['metric']} | | | `{cell(peer['instance_path'])}` | {peer['status']} ({peer['covered']}/{peer['coverable']}) | |\n")
+                    target = " |" if show_target else ""
+                    stream.write(f"| | {row['metric']} | | | `{cell(peer['instance_path'])}` | {peer['status']} ({peer['covered']}/{peer['coverable']}) |{target}\n")
         stream.write("\n排除验证状态：`" + manifest["exclusion_validation"]["status"] + "`。未覆盖不自动代表应当排除或不可达。\n\n")
         stream.write("[JSON](uncovered_coverage.json) · [CSV](uncovered_coverage.csv) · [运行摘要](analysis_manifest.json)\n")
+
+
+def write_results(stage, inventory, manifest, per_metric=False, include_other_states=False):
+    json_rows(stage / "uncovered_coverage.json", inventory.selected())
+    csv_rows(stage / "uncovered_coverage.csv", inventory.selected())
+    write_report(stage, inventory.selected(), manifest)
     if per_metric:
         for metric in manifest["summary"]:
             json_rows(stage / f"uncovered_{metric}.json", inventory.selected(metric))

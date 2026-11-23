@@ -21,6 +21,8 @@ def parser():
     p.add_argument("--version", action="version", version=__version__)
     p.add_argument("--vdb", required=True, type=Path)
     p.add_argument("--out", required=True, type=Path)
+    p.add_argument("--mode", choices=["holes", "differences"], default="holes",
+                   help="holes: instance hole extraction; differences: independent module comparison")
     p.add_argument("--rtl-root", action="append", default=[], type=Path)
     p.add_argument("--path-map", action="append", default=[], nargs=2, metavar=("OLD_PREFIX", "NEW_PREFIX"))
     p.add_argument("--instance-root", action="append", default=[])
@@ -41,7 +43,7 @@ def parser():
     p.add_argument("--validate-urg", action="store_true", help="independent full-design URG totals check before publishing")
     p.add_argument("--urg-bin", default=shutil.which("urg"), help="URG executable (only required with --validate-urg)")
     p.add_argument("--verdi-home", type=Path, default=os.environ.get("VERDI_HOME", "/nfs/tools/synopsys/verdi/U-2023.03"))
-    p.add_argument("--work-dir", type=Path)
+    p.add_argument("--work-dir", type=Path, help="scratch disk; differences defaults to the local temporary directory")
     p.add_argument("--timeout", type=int, default=3600, help="native worker timeout in seconds (default: 3600)")
     p.add_argument("--overwrite", action="store_true")
     return p
@@ -59,6 +61,12 @@ def configuration(args):
     require(args.timeout > 0, "--timeout must be positive")
     require(args.comparison_batch_size > 0, "--comparison-batch-size must be positive")
     require(args.comparison_cache_entries >= 0, "--comparison-cache-entries must be nonnegative")
+    if args.mode == "differences":
+        require(args.compare_peers != "none", "differences mode requires instance comparison")
+        require(args.limit_per_metric is None, "--limit-per-metric applies to holes mode; differences checks every target")
+        require(not (args.export_exclusions or args.validate_exclusions),
+                "Candidate exclusion export/validation requires --mode holes")
+        require(not args.per_metric, "--per-metric applies to holes mode; differences outputs include their metric")
     require(not args.validate_urg or not args.instance_root, "--validate-urg currently requires the complete design (omit --instance-root)")
     require(not args.validate_urg or args.urg_bin, "URG not found; set --urg-bin")
     for root in args.rtl_root:
@@ -86,7 +94,8 @@ def configuration(args):
                 require(json.loads(marker.read_text()).get("tool") == "uncover-extract", "Existing output is not owned by uncover-extract")
             except (ValueError, OSError) as exc:
                 raise ToolError(f"Invalid previous manifest: {exc}") from exc
-    return {"vdb": str(vdb), "out": str(out), "rtl_roots": [str(p.resolve()) for p in args.rtl_root],
+    return {"vdb": str(vdb), "out": str(out), "mode": args.mode,
+        "rtl_roots": [str(p.resolve()) for p in args.rtl_root],
         "path_maps": [[old.rstrip("/"), str(Path(new).resolve())] for old, new in args.path_map],
         "instance_roots": args.instance_root, "metrics": list(dict.fromkeys(args.metrics)) if args.metrics else None,
         "tests": args.tests, "all_tests": args.all_tests, "exclude_files": [str(p.resolve()) for p in args.exclude_file],
@@ -96,7 +105,8 @@ def configuration(args):
         "include_other_states": args.include_other_states, "export_exclusions": args.export_exclusions,
         "validate_exclusions": args.validate_exclusions, "verdi_home": str(args.verdi_home.resolve()),
         "validate_urg": args.validate_urg, "urg_bin": args.urg_bin,
-        "work_dir": str(args.work_dir.resolve()) if args.work_dir else None}
+        "work_dir": str(args.work_dir.resolve()) if args.work_dir else (
+            tempfile.gettempdir() if args.mode == "differences" else None)}
 
 
 def execute(config, timeout):
