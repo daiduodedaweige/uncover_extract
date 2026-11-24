@@ -16,7 +16,7 @@ def read_xml(path):
 
 
 def xml_hints(vdb):
-    """No hit data are decoded here. Unknown metadata disables comparison hints."""
+    """No hit data are decoded here. Unknown metadata disables optional source hints."""
     base = vdb / "snps/coverage/db"
     definitions, metric_models, warnings = {}, {}, []
     try:
@@ -44,13 +44,13 @@ def xml_hints(vdb):
             definitions[name(node)] = {"definition_id": definition.get("id"),
                 "definition_checksum": definition.get("chksum"),
                 "sources": sorted({files[n.get("file_id")] for n in definition.findall("srclocmult") if n.get("file_id") in files}),
-                "parameters": None, "parameter_evidence": "native definition/model identity; explicit values unavailable"}
+                "parameters": None, "parameter_evidence": "native definition metadata; explicit parameter values unavailable"}
         for metric in METRICS:
             path = base / f"shape/{metric}.verilog.info.xml"
             if path.exists():
                 metric_models[metric] = {i.get("name"): i.get("chksum") for i in read_xml(path).findall("instance_data")}
     except (OSError, ET.ParseError, KeyError, ToolError) as exc:
-        warnings.append(f"XML identity hints unavailable: {exc}; incompatible/unknown models will not be compared")
+        warnings.append(f"XML identity hints unavailable: {exc}; coverage facts remain readable")
         return {}, {}, warnings
     return definitions, metric_models, warnings
 
@@ -136,8 +136,8 @@ class NativeSession:
             checksum = self.models.get(metric, {}).get(path)
             model = {"definition_id": hint.get("definition_id"),
                      "definition_checksum": hint.get("definition_checksum"), "metric_checksum": checksum}
-            comparable = all(value is not None for value in model.values())
+            known_model = all(value is not None for value in model.values())
             self.scope_info[key] = {"module_name": inst.def_name(), **hint, **model,
-                "model_key": stable_id(model) if comparable else None,
+                "model_key": stable_id(model) if known_model else None,
                 "sources": hint.get("sources", [inst.file_name()] if inst.file_name() else [])}
         return self.scope_info[key]

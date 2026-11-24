@@ -17,7 +17,7 @@ from .common import METRICS, ToolError, require, write_json
 
 
 def parser():
-    p = argparse.ArgumentParser(description="Analyze VDB coverage by RTL model; retain complete native facts and report instance differences.")
+    p = argparse.ArgumentParser(description="Analyze each selected instance's coverage; retain native facts and report all uncovered points.")
     p.add_argument("--version", action="version", version=__version__)
     p.add_argument("--vdb", required=True, type=Path)
     p.add_argument("--out", required=True, type=Path)
@@ -109,7 +109,7 @@ def execute(config, timeout):
                 with (stage / "execution.log").open(encoding="utf-8", errors="replace") as progress:
                     def forward_progress():
                         for line in progress:
-                            if line.startswith(tuple(metric + ":" for metric in METRICS) + ("comparison:", "output:")):
+                            if line.startswith(tuple(metric + ":" for metric in METRICS) + ("coverage:", "output:")):
                                 print(line.rstrip(), file=sys.stderr, flush=True)
                     while True:
                         try:

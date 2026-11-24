@@ -1,148 +1,85 @@
 # uncover-extract
 
-从 Synopsys VDB 读取 Line、Toggle、Branch、Condition 原生覆盖事实，按相同 RTL 模型比较各实例的覆盖点，生成模块汇总和差异报告。每个覆盖点共享完整描述，逐实例保存原始状态，完整空洞可从事实库离线导出。
+逐实例读取 Synopsys VDB 的原生覆盖事实，生成 Line、Toggle、Branch、Condition 四指标统计和完整未覆盖点报告。每个实例独立检查，不执行实例间差异分析。
 
-主程序只有一条执行流程：模型分组 → 每实例顺序扫描 → 紧凑事实保存 → 覆盖点分类 → 分组报告。工作区默认位于系统临时目录。运行需要 Linux、Python 3.10+、Verdi Python NPI 和可用许可证；已验证工具版本为 Verdi/VCS/URG U-2023.03，无 Python 第三方依赖。
+需要 Python 3.10+、Verdi NPI 和可用许可证；原生验证环境为 U-2023.03。读取在 VDB 副本及独立进程中完成，核对输入指纹后发布结果。
 
-## 直接使用
+## 运行
 
 ```bash
-# 查看参数，无需 NPI 或许可证。
-python3 uncover_extract.py --help
-
-# 当前工程的四指标完整分析。
 python3 uncover_extract.py \
   --vdb merged0608.vdb --rtl-root rtl \
   --metrics line tgl branch cond \
-  --out results/coverage
+  --out results/coverage-instances
 
-# 只分析 Toggle，省略 --metrics 则自动探测全部支持的指标。
+# 省略 --metrics 自动探测；可重复指定实例根，包含该实例及后代。
 python3 uncover_extract.py \
   --vdb merged0608.vdb --rtl-root rtl \
-  --metrics tgl --out results/toggle
+  --instance-root tb_top.u_DongJiangTop.hnx.slice \
+  --out results/slice
 ```
 
-入口支持绝对路径，可从任意目录运行。输出目录必须与输入 VDB、RTL 根目录分离；默认拒绝覆盖已有结果，更新本工具的已有结果时添加 `--overwrite`。原生读取在独立进程和 VDB 副本中运行，成功后核对原始 VDB 全部文件的 SHA-256，再发布完整结果。
+单测试 VDB 自动采用唯一测试；多测试通过 `--tests mode0 mode1` 或 `--all-tests` 选择，由 NPI 原生累计。未知测试或实例根会报错。
 
-当前工程约有 695 万个未覆盖 Toggle 方向目标。原生排除点不进入分析、报告及发布的事实库；其余目标保存完整紧凑事实。默认报告展示差异、共同特殊状态及不可比目标，全体已覆盖和共同未覆盖只汇总。每个信号位、方向和 bin 均独立保留，不按信号名或源码行合并。
+`--instance-root` 只读取范围内实例的原子状态。父实例只统计自身覆盖点，子实例单独列出。`--metrics` 支持 `line tgl branch cond`，也接受 `toggle`、`condition`。
 
-## 测试、实例范围与源码
+`--rtl-root`、`--path-map OLD NEW`、`--instance-root`、`--exclude-file` 可以重复。源码映射先匹配显式前缀，再按 RTL 根中最长路径后缀或唯一文件名解析；指定目录中缺失或歧义时不会回退旧构建路径。缺少源码不影响保留覆盖事实。
 
-```bash
-# 多测试 VDB 明确选择测试；也可用 --all-tests 累计全部测试。
-python3 uncover_extract.py \
-  --vdb /data/run.vdb --tests regression_a regression_b \
-  --rtl-root /work/project/rtl \
-  --path-map /old/build/rtl /work/project/rtl \
-  --instance-root tb_top.dut \
-  --out /work/results/coverage
+`--batch-size` 默认 256，范围 1–500；`--work-dir` 默认为系统临时目录；`--timeout` 默认 3600 秒。已有输出需要 `--overwrite`，且只能替换本工具生成的结果；失败不会替换旧结果。
 
-# 应用已有外部排除，并用 URG 核对全设计精确计数。
-python3 uncover_extract.py \
-  --vdb /data/run.vdb --all-tests \
-  --exclude-file /work/existing.el \
-  --validate-urg --urg-bin /path/to/urg \
-  --out /work/results/checked
-```
+## 阅读报告
 
-单测试 VDB 自动选择唯一测试；多个测试由 NPI 原生累计。未明确选择、测试不存在或实例根不存在时会报错。`--instance-root` 限定报告目标的范围，同模型对照实例可以在范围外；范围外实例独有目标不会扩大报告范围。URG 目前仅支持全设计核对，不能与 `--instance-root` 同用。
-
-`--rtl-root`、`--path-map`、`--instance-root`、`--exclude-file` 均可重复提供。源码映射优先使用显式前缀映射，其次在指定 RTL 根内按最长路径后缀、唯一文件名解析；指定目录中缺失或存在歧义时不回退旧构建路径。未指定 RTL 根或匹配的前缀映射时，才直接使用原路径。报告显示解析后的源码文件路径，链接使用相对于报告的文件路径，行号单列。缺少 RTL 或源码不影响原生覆盖事实保留；当前文件哈希不证明它与编译 VDB 的源码完全一致。
-
-## 输出与离线导出
+先打开 `report.md`，从四指标总览进入实例小节，再按指标检查源码覆盖点。
 
 | 文件 | 内容 |
 | --- | --- |
-| `report.md` | 存在未覆盖点的模块实例清单、分类依据、“实例 / 覆盖情况”表格及源码文件链接，行号单列 |
-| `module_summary.json` | 模型组、实例/源码目录、覆盖分类计数 |
-| `differences.csv`、`differences.jsonl.gz` | 差异、共同特殊状态及不可比覆盖点，引用状态分组 |
-| `difference_patterns.jsonl.gz` | 分组的实例状态分布和不可比原因 |
-| `coverage_facts.sqlite` | 共享完整原生定位、逐实例 covered/coverable/raw_status |
-| `analysis_manifest.json` | 输入指纹、测试、范围、原生计数、性能及核验状态 |
-| `execution.log` | 原生工具日志和扫描、分类、输出进度 |
+| `report.md` | 全部所选实例的四指标统计与逐实例分析入口 |
+| `reports/instances/` | 按真实实例层级组织的实例目录和指标分页 |
+| `instance_summary.json` | 实例、模块、指标可用状态、原生总计、原子状态数量、全部页面及计数 |
+| `coverage_facts.sqlite` | 完整原生定位和逐实例原始状态 |
+| `analysis_manifest.json` | 输入指纹、测试、范围、采集统计、报告与性能 |
+| `execution.log` | 原生采集和报告生成进度 |
 
-实例比较同时核对定义/指标模型身份与实际完整目标描述；身份缺失时按实例隔离。结构不匹配或缺失记录为不可比。原始状态位完整保留，展示状态相同但原始标志不同不会自动算作差异。单实例组会明确标记。
+只有存在常规未覆盖点的实例生成自身的 `index.md` 和指标明细页。已覆盖父实例可能作为子实例的路径目录存在，但没有父实例自己的明细。没有未覆盖点或没有可分析点的实例仍保留在主报告中。
 
-下面的导出读取已保留的事实库，无需 NPI、许可证或重新扫描 VDB：
+四指标分别统计常规未覆盖原子点。`0` 表示该实例该指标已分析且没有常规未覆盖点；`—` 表示未选择、未采集或没有可分析原子点，原因见实例小节。特殊状态不当作未覆盖，也不能据未覆盖数为零认定全部覆盖。原生排除点不参与分析。
+
+明细按源码文件、数值行号和信号位/方向排序，每页最多 2000 个点、约 1 MiB，单条超长记录允许独立成页。所有未覆盖点都会写出，分页不截断。明细仅展示“源码文件 / 行号 / 信号、覆盖点、方向”，Line 只展示源码文件和行号。源码只链接文件，行号独立显示。
+
+## 离线报告及导出
+
+无需加载 NPI，也无需许可证，可从已有结果重建完整报告到新目录。支持旧版 1.0 事实库，只读访问来源；新副本升级到事实库 2.0。
 
 ```bash
-# 全部所选实例的常规未覆盖点，保留完整身份、源码和原始状态。
-python3 -m uncover_tool.export_facts \
-  --result results/coverage --kind holes \
-  --out results/all-holes.jsonl.gz
+python3 -m uncover_tool.rebuild_report \
+  --result results/coverage --out results/coverage-instances-offline
 
-# 差异、特殊状态及不可比目标的完整定位和逐实例原始状态。
-python3 -m uncover_tool.export_facts \
-  --result results/coverage --kind differences \
-  --out results/difference-details.jsonl.gz
+# 按需要调整分页大小和字节上限。
+python3 -m uncover_tool.rebuild_report \
+  --result results/coverage --out results/custom-pages \
+  --page-size 1000 --page-bytes 1048576
 
-# 每个模型目标一条共同未覆盖记录。
+# 默认导出全部所选实例的常规未覆盖点，流式生成 JSONL 或 gzip JSONL。
 python3 -m uncover_tool.export_facts \
-  --result results/coverage --kind common-uncovered \
-  --out results/common-uncovered.jsonl.gz
+  --result results/coverage-instances --out results/all-holes.jsonl.gz
 ```
 
-导出支持 `.jsonl` 和 `.jsonl.gz`，拒绝覆盖已有文件。空洞按模型覆盖点/实例顺序导出，不重复附带全组实例对照。原生排除点过滤后不发布，也不产生不可比记录；不可达、非法和不计分状态保存在事实库中，不归为普通空洞。未覆盖不自动代表应当排除或不可达。
+导出保留实例、指标、目标身份、完整原生定位、源码映射、`covered/coverable/raw_status`、独立标志和状态。`--kind holes` 可以显式指定。导出文件不得覆盖。
 
-## 参数与迁移
+0.3.0 移除了差异分析，默认不再生成 `differences.*`、`difference_patterns.jsonl.gz` 或 `module_summary.json`。`--kind differences`、`--kind common-uncovered` 会说明迁移方式。旧的模式/比较参数不再支持；历史结果保留原样。
 
-常用参数除上述输入选择外还有：
+## 核验
 
-- `--work-dir PATH`：临时工作盘，默认系统临时目录；保存 VDB 副本与状态库。
-- `--batch-size N`：有界事实读写批次，默认 256，范围 1–500。
-- `--verdi-home PATH`：Verdi 安装目录；默认读取 `VERDI_HOME`，再回退本机 U-2023.03 路径。
-- `--timeout N`：原生 worker 超时，默认 3600 秒。
-- `--overwrite`：成功后替换本工具的已有结果；失败保留原结果和诊断目录。
-
-0.2.0 将原来可选的高效分析路径设为唯一主流程，manifest 格式版本为 2.0。事实库和分组文件的结构仍为 1.0。
-
-`--mode`、`--compare-peers`、`--limit-per-metric`/`--limit`、`--comparison-cache-entries`、`--profile-comparison`、`--include-other-states`、`--per-metric`、`--export-exclusions`、`--validate-exclusions` 已移除；批次参数改为 `--batch-size`。旧参数会明确报错。已有外部排除继续通过 `--exclude-file` 加载，加载后按原生排除标志过滤目标，其余特殊状态完整保留。
-
-默认不再生成 `uncovered_coverage.json/csv` 或重复的逐主项实例对照。需要全部空洞时使用离线导出。旧的候选排除文件生成和新副本重新加载验证已随旧流程移除。
-
-性能记录在 `performance.timings` 中，分别统计原生扫描/状态保存、分类、事实库发布和报告写出。原生实例状态仍逐条读取，优化减少重复描述、定位、完整结果构造和重复落盘。全设计历史实测与验证边界见 [模块差异分析](docs/模块差异分析.md)。
-
-## 验证与工程结构
+全设计可使用 `--validate-urg --urg-bin /path/to/urg`，独立核对同测试、同排除条件下的原生计分总数。当前 URG 核验不支持 `--instance-root`。
 
 ```bash
-# 无需原生工具的逻辑回归。
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
-
-# 可重建双测试 fixture，需要 VCS。
-python3 scripts/build_fixture.py --out /tmp/uncover-fixture
-
-# 默认流程的原生场景及 URG 核验，需要 NPI/URG 许可证。
-python3 scripts/run_scenarios.py \
-  --vdb /tmp/uncover-fixture/model.vdb \
-  --out validation/scenarios-new
-
-# 核对可选 XML 身份提示缺失时，原始空洞事实仍一致。
-python3 scripts/check_missing_identity.py \
-  --vdb /tmp/uncover-fixture/model.vdb \
-  --out validation/identity-new
-
-# 只读比较两份结果的逐条事实、分组报告与计数。
-python3 scripts/check_differences.py \
-  --reference /work/reference-result --result results/coverage
+python3 scripts/build_fixture.py --out /tmp/coverage-fixture
+python3 scripts/run_scenarios.py --vdb /tmp/coverage-fixture/model.vdb --out validation/instance-scenarios
+python3 scripts/check_missing_identity.py --vdb /tmp/coverage-fixture/model.vdb --out validation/instance-no-identity
+python3 scripts/check_instances.py --result results/coverage-instances
 ```
 
-运行进度显示为 `comparison: scanning`、`comparison: classified` 和 `output:`。失败不会发布半份正式结果或替换旧结果；失败目录保留配置、错误、输入审计和工作区位置。
+`check_instances.py` 将所有分页逐条与事实库对照，检查数量、顺序、遗漏、重复、源码及导航链接；兼容含目标编号的旧报告和当前报告，已有报告可直接校验，无需重建。可用 `--reference OLD_RESULT` 核对每个实例的全部原始状态。
 
-`uncover_tool/` 保存命令行、原生会话、事实分析、报告、离线导出和 URG 核验；`tests/` 为逻辑回归；`scripts/` 为 fixture 和原生验证；`docs/` 为数据格式与实现说明。可直接运行入口，也可执行 `python3 -m pip install --no-build-isolation --no-deps .` 安装命令行工具。
-
-`validation/` 保存历次真实测量及新验证结果。历史报告、`advice.md`、`plan.md` 中的旧模式和命令仅反映当时实现，当前用法以本文和 `--help` 为准。历史结果不会被本次升级重写。
-
-尚未声明支持 FSM、VHDL、跨编译版本目标匹配或其他厂商覆盖库。原生定位下标仅在记录的模型内有效；本工具不提供 RTL 不可达性证明。
-
-## 清理结果
-
-```bash
-./clean.sh --dry-run  # 查看将终止的任务与清理范围。
-./clean.sh            # 终止使用 results/ 的相关任务，再清空 results/。
-```
-
-脚本按自身位置定位 `results/`，可从任意目录调用。程序、VDB、RTL 和 `validation/` 保留；自定义到其他位置的输出/工作目录不在清理范围内。
-
-当前版本已通过 25 项逻辑测试、11 次原生场景和全设计四指标 URG 核验；7,753,570 条原始状态及全部分组报告与整合前结果逐条一致。默认全设计 worker 本次耗时约 5.77 分钟。详见 [本次验证](docs/模块差异分析.md#主流程整合020)。
-
-详细字段见 [输出格式](docs/输出格式.md)。
+[输出格式](docs/输出格式.md) · [实施计划](plan.md) · [本次验证记录](docs/重构验证.md)

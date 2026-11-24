@@ -15,7 +15,8 @@ from . import SCHEMA_VERSION, __version__
 from .common import fingerprint, require, stable_id, write_json
 from .mapping import SourceMapper
 from .native import NativeSession
-from .differences import analyze, write_report
+from .extraction import analyze
+from .report import write_report
 
 
 def run(config, stage):
@@ -37,7 +38,7 @@ def run(config, stage):
         tick = time.perf_counter()
         with NativeSession(config, copied) as session:
             timings["native_session_seconds"] = time.perf_counter() - tick
-            summary, capabilities, comparison_report, comparison_stats = analyze(
+            summary, capabilities, extraction_stats = analyze(
                 session, config, stage, work, mapper, before["sha256"], timings)
             selected_tests = session.selected_tests
             available_tests = session.available_tests
@@ -53,18 +54,18 @@ def run(config, stage):
             "environment": {"python": sys.version, "verdi_home": config["verdi_home"], "reader": "Verdi NPI"},
             "configuration": config, "available_tests": available_tests, "selected_tests": selected_tests,
             "test_scope_ref": stable_id(selected_tests), "capabilities": capabilities, "summary": summary,
-            "same_rtl_comparison": comparison_report, "source_mappings": mapper.report(),
+            "facts_schema_version": "2.0", "source_mappings": mapper.report(),
             "source_correspondence": "unconfirmed; path resolution and current file hashes are not compilation equivalence proof",
             "warnings": warnings,
             "performance": {"timings": timings, "seconds_before_output": time.perf_counter() - started,
                             "peak_rss_kib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
-                            "comparison": comparison_stats},
+                            "extraction": extraction_stats},
             "limitations": ["FSM/VHDL and cross-compilation target matching are not implemented",
                             "Native bin locators are valid only in the recorded model",
                             "Missing/unmapped RTL never removes a native coverage fact"]}
-        print("output: writing grouped JSON, CSV and report", flush=True)
+        print("output: writing per-instance summaries and complete Markdown pages", flush=True)
         tick = time.perf_counter()
-        write_report(stage, manifest)
+        manifest["report"] = write_report(stage, manifest)
         timings["output_seconds"] = time.perf_counter() - tick
         print(f"output: finished in {timings['output_seconds']:.2f}s", flush=True)
         manifest["performance"]["total_seconds"] = time.perf_counter() - started

@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from scripts.check_differences import equal_rows, stream_records
+from scripts.check_instances import equal_rows, stream_records
 from uncover_tool.common import ToolError
 
 

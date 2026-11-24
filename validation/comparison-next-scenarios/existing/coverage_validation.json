@@ -1,9 +1,0 @@
-{
-  "status": "passed",
-  "method": "fresh VDB copy/session, actual candidate .el reload and per-bin state comparison",
-  "checked_scopes": 14,
-  "checked_atomic_bins": 169,
-  "newly_excluded_atomic_bins": 101,
-  "existing_and_unselected_bins_in_checked_scopes_unchanged": true,
-  "scope": "selected instances and compatible peers; not a proof about every bin in the entire design"
-}

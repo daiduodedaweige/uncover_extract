@@ -1,8 +1,0 @@
-Reading an isolated VDB copy. Progress log: /nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-scenarios/.no-peers.running-d_1bs45l/execution.log
-line: 25 uncovered atomic targets
-tgl: 34 uncovered atomic targets
-branch: 10 uncovered atomic targets
-cond: 33 uncovered atomic targets
-output: writing JSON, CSV and report
-output: finished in 0.03s
-{"status": "success", "out": "/nfs/home/weijing/workspace/uncover_extract/validation/comparison-next-scenarios/no-peers", "records_per_metric": {"line": 25, "tgl": 34, "branch": 10, "cond": 33}}

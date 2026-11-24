@@ -1,18 +1,19 @@
-"""Export retained module-comparison facts without loading NPI."""
+"""Export every selected instance's uncovered points without loading NPI."""
 import argparse
 import gzip
 from pathlib import Path
 
 from .common import ToolError, require
-from .differences import FactsReader, packed
+from .facts import FactsReader, packed
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--result", required=True, type=Path, help="published differences result directory")
-    parser.add_argument("--kind", choices=["differences", "holes", "common-uncovered"], default="differences")
+    parser.add_argument("--result", required=True, type=Path, help="published coverage result directory")
+    parser.add_argument("--kind", default="holes", help="only holes is supported; difference exports were removed")
     parser.add_argument("--out", required=True, type=Path, help="new JSONL or .jsonl.gz file")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    require(args.kind == "holes", "Difference analysis was removed; use --kind holes for all instance uncovered points")
     require(args.result.is_dir(), "Result directory does not exist")
     require(not args.out.exists(), "Export output already exists; choose a new file")
     reader = FactsReader(args.result / "coverage_facts.sqlite")

@@ -1,5 +1,0 @@
-{
-  "status": "failed",
-  "error": "VDB has 2 tests ['mode0', 'mode1']; use --tests or --all-tests",
-  "type": "ToolError"
-}

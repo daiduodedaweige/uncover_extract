@@ -12,7 +12,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from uncover_tool.common import fingerprint, require, write_json
-from uncover_tool.differences import FactsReader
+from uncover_tool.facts import FactsReader
 
 
 def main():
@@ -54,11 +54,6 @@ def main():
         reader = FactsReader(out / label / 'coverage_facts.sqlite')
         try:
             records[label] = {r['target_id']: (r['covered'], r['coverable'], r['raw_status']) for r in reader.details('holes')}
-            if label == 'no-hints':
-                details = list(reader.details())
-                require(details and all(r['same_rtl_coverage']['comparable_instance_count'] == 1 for r in details),
-                        'Unknown models shared facts across instances')
-                require(any(r['same_rtl_coverage']['incomparable_instances'] for r in details), 'Incomparable reasons are missing')
         finally:
             reader.close()
     require(records['normal'] == records['no-hints'], 'Missing identity changed original hole facts')
