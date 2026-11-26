@@ -10,7 +10,7 @@ requires-python = ">=3.10"
 dependencies = []
 
 [project.scripts]
-uncover-extract = "uncover_tool.cli:main"
+uncover-extract = "uncover_extract.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["uncover_tool*"]
+include = ["uncover_extract*"]

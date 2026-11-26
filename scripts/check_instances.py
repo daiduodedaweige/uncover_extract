@@ -13,10 +13,10 @@ from urllib.parse import unquote
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
-from uncover_tool.common import require,write_json
-from uncover_tool.facts import FactsReader,point_label,point_number_starts
-from uncover_tool.output import cell,source_cells,target_description
-from uncover_tool.report import DETAIL_FORMAT
+from uncover_extract.common import require,write_json
+from uncover_extract.facts import FactsReader,point_label,point_number_starts
+from uncover_extract.output import cell,source_cells,target_description
+from uncover_extract.report import DETAIL_FORMAT
 
 
 def stream_records(path):

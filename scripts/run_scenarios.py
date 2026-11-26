@@ -9,8 +9,8 @@ import time
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
-from uncover_tool.common import require,write_json,fingerprint
-from uncover_tool.facts import FactsReader
+from uncover_extract.common import require,write_json,fingerprint
+from uncover_extract.facts import FactsReader
 from scripts.check_instances import compare,verify,stream_records
 
 
@@ -63,7 +63,7 @@ def main():
         _,excluded=execute('existing',['--exclude-file',str(args.exclude_file.resolve()),*urg])
         require(len(excluded)<len(holes),'Exclusions did not remove holes')
     destination=out/'holes.jsonl.gz'
-    subprocess.run([sys.executable,'-m','uncover_tool.export_facts','--result',str(out/'full'),'--out',str(destination)],cwd=ROOT,check=True,timeout=30)
+    subprocess.run([sys.executable,'-m','uncover_extract.export_facts','--result',str(out/'full'),'--out',str(destination)],cwd=ROOT,check=True,timeout=30)
     require(list(stream_records(destination))==holes,'Offline export changed facts')
     execute('ambiguous-tests',tests=(),expected=1)
     execute('wrong-test',tests=('--tests','not-a-test'),expected=1)

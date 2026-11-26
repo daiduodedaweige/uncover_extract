@@ -4,10 +4,10 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from uncover_tool.cli import parser, configuration
-from uncover_tool.common import ToolError, descriptor, in_scope, location, state, walk_bins
-from uncover_tool.mapping import SourceMapper
-from uncover_tool.output import source_cells
+from uncover_extract.cli import parser, configuration
+from uncover_extract.common import ToolError, descriptor, in_scope, location, state, walk_bins
+from uncover_extract.mapping import SourceMapper
+from uncover_extract.output import source_cells
 
 
 class Node:

@@ -62,16 +62,16 @@ python3 uncover_extract.py \
 无需加载 NPI，也无需许可证，可从已有结果重建完整报告到新目录。支持旧版 1.0 事实库，只读访问来源；新副本升级到事实库 2.0。
 
 ```bash
-python3 -m uncover_tool.rebuild_report \
+python3 -m uncover_extract.rebuild_report \
   --result results/coverage --out results/coverage-instances-offline
 
 # 按需要调整分页大小和字节上限。
-python3 -m uncover_tool.rebuild_report \
+python3 -m uncover_extract.rebuild_report \
   --result results/coverage --out results/custom-pages \
   --page-size 1000 --page-bytes 1048576
 
 # 默认导出全部所选实例的常规未覆盖点，流式生成 JSONL 或 gzip JSONL。
-python3 -m uncover_tool.export_facts \
+python3 -m uncover_extract.export_facts \
   --result results/coverage-instances --out results/all-holes.jsonl.gz
 ```
 

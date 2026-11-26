@@ -63,8 +63,8 @@ def active_users():
     for pid, task in table.items():
         command = task["command"]
         if not any(name in command for name in (
-            "uncover_extract.py", "uncover-extract", "uncover_tool.worker",
-            "uncover_tool.cli", "uncover_tool.urg"
+            "uncover_extract.py", "uncover-extract", "uncover_extract.worker",
+            "uncover_extract.cli", "uncover_extract.urg"
         )):
             continue
         # ps does not quote arguments with spaces; /proc preserves NUL boundaries.
@@ -87,9 +87,9 @@ def active_users():
             module = tokens[index + 1] if index + 1 < len(tokens) else ""
         else:
             index, module = -1, ""
-        native = module == "uncover_tool.worker"
-        urg = module == "uncover_tool.urg"
-        frontend = module == "uncover_tool.cli" or any(
+        native = module == "uncover_extract.worker"
+        urg = module == "uncover_extract.urg"
+        frontend = module == "uncover_extract.cli" or any(
             Path(token).name in ("uncover_extract.py", "uncover-extract")
             for token in tokens[:3]
         )

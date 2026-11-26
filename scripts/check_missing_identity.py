@@ -11,8 +11,8 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from uncover_tool.common import fingerprint, require, write_json
-from uncover_tool.facts import FactsReader
+from uncover_extract.common import fingerprint, require, write_json
+from uncover_extract.facts import FactsReader
 
 
 def main():
@@ -27,7 +27,7 @@ def main():
     require(not out.exists(), 'Choose a fresh output directory')
     out.mkdir(parents=True)
     if args.worker:
-        from uncover_tool import cli, worker
+        from uncover_extract import cli, worker
         config = cli.configuration(cli.parser().parse_args([
             '--vdb', str(vdb), '--out', str(out), '--tests', *args.tests,
             '--metrics', 'line', 'tgl', 'branch', 'cond']))
@@ -36,7 +36,7 @@ def main():
             with tempfile.TemporaryDirectory(prefix='uncover-no-identity-') as temp:
                 config['scratch_dir'] = temp
                 if args.worker == 'no-hints':
-                    with patch('uncover_tool.native.xml_hints', return_value=(
+                    with patch('uncover_extract.native.xml_hints', return_value=(
                             {}, {}, ['XML identity hints disabled by native regression harness'])):
                         worker.run(config, out)
                 else:

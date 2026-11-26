@@ -102,7 +102,7 @@ def execute(config, timeout):
     print(f"Reading an isolated VDB copy. Progress log: {stage / 'execution.log'}", file=sys.stderr, flush=True)
     try:
         with (stage / "execution.log").open("w", encoding="utf-8") as log:
-            process = subprocess.Popen([sys.executable, "-m", "uncover_tool.worker", str(config_path), str(stage)],
+            process = subprocess.Popen([sys.executable, "-m", "uncover_extract.worker", str(config_path), str(stage)],
                                        stdout=log, stderr=subprocess.STDOUT, env=env, start_new_session=True)
             try:
                 deadline = time.monotonic() + timeout
@@ -135,7 +135,7 @@ def execute(config, timeout):
         manifest_path = stage / "analysis_manifest.json"
         manifest = json.loads(manifest_path.read_text())
         if config["validate_urg"]:
-            command = [sys.executable, "-m", "uncover_tool.urg", "--result", str(stage),
+            command = [sys.executable, "-m", "uncover_extract.urg", "--result", str(stage),
                        "--out", str(stage / "urg_validation"), "--urg-bin", config["urg_bin"]]
             with (stage / "urg_validation.log").open("w") as log:
                 checked = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, env=env, timeout=240)

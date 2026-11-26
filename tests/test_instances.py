@@ -14,14 +14,14 @@ from unittest.mock import patch
 from urllib.parse import unquote
 
 from test_core import Node
-from uncover_tool.common import ToolError, stable_id, walk_bins, write_json
-from uncover_tool.extraction import analyze
-from uncover_tool.facts import FactsReader, FactStore
-from uncover_tool.mapping import SourceMapper
-from uncover_tool.output import instance_directory, instance_parts
-from uncover_tool.report import write_report
-from uncover_tool.rebuild_report import rebuild
-from uncover_tool.export_facts import main as export
+from uncover_extract.common import ToolError, stable_id, walk_bins, write_json
+from uncover_extract.extraction import analyze
+from uncover_extract.facts import FactsReader, FactStore
+from uncover_extract.mapping import SourceMapper
+from uncover_extract.output import instance_directory, instance_parts
+from uncover_extract.report import write_report
+from uncover_extract.rebuild_report import rebuild
+from uncover_extract.export_facts import main as export
 
 
 class Session:
@@ -339,7 +339,7 @@ class InstanceTests(unittest.TestCase):
             with self.assertRaises(ToolError):rebuild(stage,root/'rebuilt')
 
     def test_worker_failure_audits_input_and_closes_facts(self):
-        from uncover_tool import worker
+        from uncover_extract import worker
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);original=root/'original.vdb';scratch=root/'scratch';stage=root/'stage'
             for path in (original,scratch,stage):path.mkdir()
@@ -386,7 +386,7 @@ class InstanceTests(unittest.TestCase):
                         self.assertTrue((page.parent/unquote(link)).is_file(),link)
 
     def test_successful_worker_manifest_has_only_instance_contract(self):
-        from uncover_tool import worker
+        from uncover_extract import worker
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);original=root/'input.vdb';stage=root/'stage';scratch=root/'scratch'
             for path in (original,stage,scratch):path.mkdir()

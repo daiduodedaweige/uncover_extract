@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from uncover_tool.common import require, write_json
+from uncover_extract.common import require, write_json
 
 
 def main():
