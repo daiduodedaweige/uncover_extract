@@ -1,0 +1,5 @@
+interface:
+  display_name: "单条未覆盖点分析"
+  short_description: "按 UC 编号查询四类原生覆盖事实、设计依赖和原因边界，生成可复核报告"
+policy:
+  allow_implicit_invocation: true

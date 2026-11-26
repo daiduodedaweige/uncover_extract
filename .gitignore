@@ -8,6 +8,7 @@ dist/
 .uncover-work-*/
 
 /results/
+/result_analyse_UC-*/
 /.venv/
 /.pytest_cache/
 
