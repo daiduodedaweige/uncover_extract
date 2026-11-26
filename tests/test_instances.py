@@ -97,7 +97,7 @@ class InstanceTests(unittest.TestCase):
             self.assertFalse((stage/'differences.csv').exists())
             for page in stage.rglob('line-*.md'):
                 detail=page.read_text()
-                self.assertIn('| 源码文件 | 行号 |\n| --- | ---: |',detail)
+                self.assertIn('## 未覆盖点\n\n- [ ] 源码文件：same.sv；行号：3',detail)
                 self.assertNotIn('目标编号',detail)
 
     def test_scope_does_not_read_outside_instances(self):
@@ -179,8 +179,9 @@ class InstanceTests(unittest.TestCase):
                     self.assertNotIn('target_sequence_sha256',item)
                     for page in item['pages']:
                         text=(stage/page['path']).read_text()
-                        header='| 源码文件 | 行号 |'+(' 信号 / 覆盖点 / 方向 |' if metric!='line' else '')
-                        self.assertIn(header+'\n',text)
+                        self.assertIn('## 未覆盖点\n\n',text)
+                        self.assertEqual(text.count('- [ ] 源码文件：'),page['records'])
+                        self.assertEqual('；信号 / 覆盖点 / 方向：' in text,metric!='line')
                         self.assertNotIn('目标编号',text)
 
     def test_pages_complete_ordered_and_navigation_valid(self):
@@ -202,7 +203,7 @@ class InstanceTests(unittest.TestCase):
             for p in pages:
                 text=(stage/p['path']).read_text()
                 self.assertNotIn('目标编号',text)
-                descriptions.extend(re.findall(r'^\| same\.sv \| 3 \| (.+) \|$',text,re.M))
+                descriptions.extend(re.findall(r'^- \[ \] 源码文件：same\.sv；行号：3；信号 / 覆盖点 / 方向：(.+)$',text,re.M))
                 for target in re.findall(r'\]\(([^)]+)\)',text):
                     self.assertTrue(((stage/p['path']).parent/unquote(target)).is_file(),target)
             self.assertEqual(descriptions,['bit[0]','bit[1]','bit[2]','bit[10]'])
@@ -342,6 +343,38 @@ class InstanceTests(unittest.TestCase):
             self.assertFalse((root/'invalid').exists())
             self.assertEqual(before,(stage/'coverage_facts.sqlite').read_bytes())
 
+    def test_checked_points_remain_verifiable_without_changing_facts(self):
+        from scripts.check_instances import verify
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            session=Session(root,{'top.a':[(0,1,0)]*3})
+            handle=session.handle
+            session.handle=lambda path,metric:handle(path,'line')
+            stage,_,_=self.run_analysis(session,root,metrics=('line','tgl','branch','cond'))
+            with redirect_stdout(io.StringIO()):stats=write_report(stage,{},page_size=2)
+            manifest=json.loads((stage/'analysis_manifest.json').read_text())
+            manifest['report']=stats;write_json(stage/'analysis_manifest.json',manifest)
+            facts=(stage/'coverage_facts.sqlite').read_bytes()
+            summary=(stage/'instance_summary.json').read_bytes()
+            for page in (stage/instance_directory('top.a')).glob('*-*.md'):
+                text=page.read_text()
+                page.write_text(text.replace('- [ ] ','- [x] ',1).replace('- [ ] ','- [X] ',1))
+            with redirect_stdout(io.StringIO()):checked=verify(stage)
+            self.assertTrue(checked['passed'])
+            self.assertEqual((checked['uncovered_records'],checked['detail_pages']),(12,8))
+            self.assertEqual((stage/'coverage_facts.sqlite').read_bytes(),facts)
+            self.assertEqual((stage/'instance_summary.json').read_bytes(),summary)
+            page=stage/instance_directory('top.a')/'line-0001.md'
+            text=page.read_text()
+            for old,new,error in [('- [x] ','- [v] ','Invalid analysis checkbox'),
+                                  ('- [x] ','','Invalid analysis checkbox'),
+                                  ('行号：3','行号：4','coverage point')]:
+                with self.subTest(change=new):
+                    page.write_text(text.replace(old,new,1))
+                    try:
+                        with redirect_stdout(io.StringIO()),self.assertRaisesRegex(ToolError,error):verify(stage)
+                    finally:page.write_text(text)
+
     def test_verifier_accepts_legacy_tables_and_checks_ids_content_and_digest(self):
         from scripts.check_instances import verify
         with tempfile.TemporaryDirectory() as tmp:
@@ -363,16 +396,17 @@ class InstanceTests(unittest.TestCase):
                         digest=hashlib.sha256()
                         suffix=' 信号 / 覆盖点 / 方向 |' if metric!='line' else ''
                         separator=' --- |' if metric!='line' else ''
-                        table=f'| 源码文件 | 行号 |{suffix}\n| --- | ---: |{separator}\n'
                         legacy=f'| 目标编号 | 源码文件 | 行号 |{suffix}\n| ---: | --- | ---: |{separator}\n'
                         for page in item['pages']:
                             file=stage/page['path']
-                            before,body=file.read_text().split(table,1)
+                            before,body=file.read_text().split('## 未覆盖点\n\n',1)
                             records,after=body.split('\n\n',1)
                             numbered=[]
                             for record in records.splitlines():
                                 tid=next(points)['id']
-                                numbered.append(f'| {tid} '+record)
+                                fields=record.removeprefix('- [ ] 源码文件：').replace('；行号：',' | ',1).replace(
+                                    '；信号 / 覆盖点 / 方向：',' | ',1)
+                                numbered.append(f'| {tid} | {fields} |')
                                 digest.update(f'{tid}\n'.encode())
                             file.write_text(before+legacy+'\n'.join(numbered)+'\n\n'+after)
                             page['bytes']=file.stat().st_size
@@ -397,6 +431,17 @@ class InstanceTests(unittest.TestCase):
                         with redirect_stdout(io.StringIO()),self.assertRaisesRegex(ToolError,'coverage point'):
                             verify(stage)
                     finally:file.write_bytes(original[file])
+            # The previous unnumbered table format remains readable as well.
+            for row in data['instances']:
+                for metric,item in row['metrics'].items():
+                    for page in item['pages']:
+                        file=stage/page['path']
+                        text=file.read_text().replace('| 目标编号 | 源码文件 |','| 源码文件 |').replace(
+                            '| ---: | --- | ---: |','| --- | ---: |')
+                        file.write_text(re.sub(r'^\| \d+ \| ', '| ',text,flags=re.M))
+                        page['bytes']=file.stat().st_size
+            write_json(stage/'instance_summary.json',data)
+            with redirect_stdout(io.StringIO()):self.assertTrue(verify(stage)['passed'])
             data['instances'][0]['metrics']['line']['target_sequence_sha256']='0'*64
             write_json(stage/'instance_summary.json',data)
             with redirect_stdout(io.StringIO()),self.assertRaisesRegex(ToolError,'Page digest differs'):
@@ -416,7 +461,7 @@ class InstanceTests(unittest.TestCase):
             with redirect_stdout(io.StringIO()):self.assertTrue(verify(stage)['passed'])
             page=stage/instance_directory('top.a')/'line-0001.md'
             original=page.read_text()
-            page.write_text(original.replace('| same.sv | 3 |','| same.sv | 4 |'))
+            page.write_text(original.replace('源码文件：same.sv；行号：3','源码文件：same.sv；行号：4'))
             with redirect_stdout(io.StringIO()),self.assertRaises(ToolError):verify(stage)
             page.write_text(original.replace('(index.md)','(missing.md)'))
             with redirect_stdout(io.StringIO()),self.assertRaises(ToolError):verify(stage)

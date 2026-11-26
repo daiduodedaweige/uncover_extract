@@ -105,20 +105,28 @@ def verify(result):
                               '| ---: | --- | ---: |'+(' --- |' if show_target else '')+'\n')
                 for page in item['pages']:
                     file=result/page['path'];text=file.read_text()
+                    checklist='## 未覆盖点\n\n' in text
                     numbered=legacy_table in text
-                    page_table=legacy_table if numbered else table
+                    page_table='## 未覆盖点\n\n' if checklist else legacy_table if numbered else table
                     require(page_table in text,'Coverage table columns differ')
                     records=text.split(page_table,1)[1].split('\n\n',1)[0].splitlines()
                     require(len(records)==page['records'],'Page record count differs')
                     for record in records:
                         fact=next(points,None)
                         require(fact is not None,'Page has extra coverage points')
-                        number=f"{fact['id']} | " if numbered else ''
-                        expected_record=f"| {number}{source_link(fact['source'],file.parent)} | {cell(fact['line'])} |"
+                        source=source_link(fact['source'],file.parent)
+                        if checklist:
+                            require(re.match(r'^- \[[ xX]\] ',record) is not None,'Invalid analysis checkbox')
+                            record=record[6:]
+                            expected_record=f"源码文件：{source}；行号：{cell(fact['line'])}"
+                        else:
+                            number=f"{fact['id']} | " if numbered else ''
+                            expected_record=f"| {number}{source} | {cell(fact['line'])} |"
                         if show_target:
                             description=fact['description']
                             if description is None:description=target_description(metric,json.loads(fact['trail']))
-                            expected_record+=f' {cell(description)} |'
+                            expected_record+=(f'；信号 / 覆盖点 / 方向：{cell(description)}' if checklist
+                                              else f' {cell(description)} |')
                         require(record==expected_record,'Page missing, duplicate, changed or reordered coverage point')
                         if digest is not None:digest.update(f"{fact['id']}\n".encode())
                     check_links(file,text)

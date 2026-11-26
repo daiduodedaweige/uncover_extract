@@ -73,8 +73,6 @@ def _write_report(stage, manifest, reader, page_size, page_bytes):
             if not count:
                 continue
             show_target = metric != "line"
-            table = ("| 源码文件 | 行号 |" + (" 信号 / 覆盖点 / 方向 |" if show_target else "") + "\n"
-                     "| --- | ---: |" + (" --- |" if show_target else "") + "\n")
             @lru_cache(128)
             def source_link(sid):
                 source, mapping = reader.sources[sid]
@@ -92,8 +90,8 @@ def _write_report(stage, manifest, reader, page_size, page_bytes):
                     description = point["description"]
                     if show_target and description is None:
                         description = target_description(metric, json.loads(point["trail"]))
-                    line = (f"| {source_link(point['source'])} | {cell(point['line'])} |"
-                            + (f" {cell(description)} |" if show_target else "") + "\n")
+                    line = (f"- [ ] 源码文件：{source_link(point['source'])}；行号：{cell(point['line'])}"
+                            + (f"；信号 / 覆盖点 / 方向：{cell(description)}" if show_target else "") + "\n")
                     length = len(line.encode("utf-8"))
                     if body and size + length + overhead > page_bytes:
                         break
@@ -111,7 +109,9 @@ def _write_report(stage, manifest, reader, page_size, page_bytes):
                 content = (f"# {cell(row['instance_path'])} / {LABELS[metric]}\n\n模块：{cell(row['module_name'])}。\n\n"
                            f"第 {page} 页，本页 {len(body):,} 个点，本指标共 {count:,} 个未覆盖点。\n\n"
                            + " · ".join(navigation) + "\n\n"
-                           + instance_state(row, "以下覆盖点均未覆盖") + table + "".join(body) + "\n"
+                           + instance_state(row, "以下覆盖点均未覆盖")
+                           + "勾选表示该点已分析；未勾选表示待分析。将 `[ ]` 改为 `[x]` 并保存即可记录分析进度。\n\n"
+                           + "## 未覆盖点\n\n" + "".join(body) + "\n"
                            + " · ".join(navigation) + "\n")
                 encoded = content.encode("utf-8")
                 (directory / name).write_bytes(encoded)
@@ -141,7 +141,8 @@ def _write_report(stage, manifest, reader, page_size, page_bytes):
         output.write("# 实例覆盖率分析\n\n每个实例只统计自身覆盖点，子实例单独列出。"
                      "四指标分别统计常规未覆盖原子点；— 表示未选择、未采集或没有可分析覆盖点，具体情况见实例小节。"
                      "排除点不参与分析；特殊状态保存在事实库和实例摘要中。\n\n"
-                     "覆盖点按源码位置列出；未覆盖原因需要结合源码、配置、激励和波形检查。\n\n" + OVERVIEW)
+                     "覆盖点按源码位置列出；未覆盖原因需要结合源码、配置、激励和波形检查。"
+                     "每条明细前的勾选框表示分析进度：未勾选为待分析，勾选为已分析。\n\n" + OVERVIEW)
         for row in rows:
             anchor = "instance-" + quote(row["instance_path"], safe="-_")
             row["anchor"] = anchor
