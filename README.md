@@ -35,7 +35,7 @@ python3 uncover_extract.py \
 | --- | --- |
 | `report.md` | 全部所选实例的四指标统计与逐实例分析入口 |
 | `reports/instances/` | 按真实实例层级组织的实例目录和指标分页 |
-| `instance_summary.json` | 实例、模块、指标可用状态、原生总计、原子状态数量、全部页面及计数 |
+| `instance_summary.json` | 实例、模块、指标可用状态、原生总计、原子状态数量、全部页面、计数及每页起止编号 |
 | `coverage_facts.sqlite` | 完整原生定位和逐实例原始状态 |
 | `analysis_manifest.json` | 输入指纹、测试、范围、采集统计、报告与性能 |
 | `execution.log` | 原生采集和报告生成进度 |
@@ -44,7 +44,16 @@ python3 uncover_extract.py \
 
 四指标分别统计常规未覆盖原子点。`0` 表示该实例该指标已分析且没有常规未覆盖点；`—` 表示未选择、未采集或没有可分析原子点，原因见实例小节。特殊状态不当作未覆盖，也不能据未覆盖数为零认定全部覆盖。原生排除点不参与分析。
 
-明细按源码文件、数值行号和信号位/方向排序，每页最多 2000 个点、约 1 MiB，单条超长记录允许独立成页。所有未覆盖点都会写出，分页不截断。明细不显示目标编号，每条前面都有“已分析”勾选框，随后展示源码文件、行号和信号/覆盖点/方向；Line 只展示源码文件和行号。源码只链接文件，行号独立显示。
+明细按源码文件、数值行号和信号位/方向排序，每页最多 2000 个点、约 1 MiB，单条超长记录允许独立成页。所有未覆盖点都会写出，分页不截断。每条前面都有“已分析”勾选框，随后展示编号、源码文件、行号和信号/覆盖点/方向；Line 的源码信息只展示文件和行号。源码只链接文件，行号独立显示。
+
+所有常规未覆盖点共用一套编号，从 `UC-000001` 连续递增，跨页、跨指标、跨实例不重置。编号顺序为实例自然排序 → Line、Toggle、Branch、Condition → 源码文件、数值行号、信号位及方向。编号至少六位，超过六位时自动扩展。同一事实库和相同分析范围下，调整分页大小、字节上限、离线重建或勾选均不改变编号；更换 VDB 或改变覆盖点集合后允许重新编号，编号只在当前报告内唯一。
+
+```markdown
+- [ ] 编号：UC-000001；源码文件：foo.sv；行号：38
+- [x] 编号：UC-000002；源码文件：foo.sv；行号：42；信号 / 覆盖点 / 方向：data[0] / 0->1
+```
+
+实例目录和明细页显示每页编号范围；`instance_summary.json` 通过 `detail_format: numbered_checklist_v1` 标识该格式，每页的 `first_point_no` 和 `last_point_no` 保存整数起止编号。
 
 勾选框使用 Markdown 任务列表：`[ ]` 表示待分析，`[x]` 表示已分析。在支持任务列表编辑的阅读器中勾选，或直接修改 Markdown 标记并保存，即可记录进度。勾选只记录人工分析进度，覆盖点仍保留在未覆盖清单中。新生成或离线重建的报告默认全部未勾选。
 
@@ -66,7 +75,7 @@ python3 -m uncover_tool.export_facts \
   --result results/coverage-instances --out results/all-holes.jsonl.gz
 ```
 
-导出保留实例、指标、目标身份、完整原生定位、源码映射、`covered/coverable/raw_status`、独立标志和状态。`--kind holes` 可以显式指定。导出文件不得覆盖。
+导出保留实例、指标、目标身份、完整原生定位、源码映射、`covered/coverable/raw_status`、独立标志和状态，并增加整数 `point_no`，与报告中的 `UC-xxxxxx` 编号对应；原有 `target_id` 保持不变。`--kind holes` 可以显式指定。导出文件不得覆盖。
 
 0.3.0 移除了差异分析，默认不再生成 `differences.*`、`difference_patterns.jsonl.gz` 或 `module_summary.json`。`--kind differences`、`--kind common-uncovered` 会说明迁移方式。旧的模式/比较参数不再支持；历史结果保留原样。
 
@@ -82,6 +91,6 @@ python3 scripts/check_missing_identity.py --vdb /tmp/coverage-fixture/model.vdb 
 python3 scripts/check_instances.py --result results/coverage-instances
 ```
 
-`check_instances.py` 将所有分页逐条与事实库对照，检查数量、顺序、遗漏、重复、源码及导航链接；兼容含目标编号的旧表格、无编号表格和当前任务列表，已有报告可直接校验，无需重建。支持未勾选和已勾选的明细。可用 `--reference OLD_RESULT` 核对每个实例的全部原始状态。
+`check_instances.py` 将所有分页逐条与事实库对照，检查数量、顺序、遗漏、重复、编号连续性及对应关系、每页编号范围、源码及导航链接；兼容含目标编号的旧表格、无编号表格、无编号任务列表和当前带编号任务列表，已有报告可直接校验，无需重建。支持未勾选和已勾选的明细。可用 `--reference OLD_RESULT` 核对每个实例的全部原始状态。需要给旧报告增加编号时，使用离线重建命令输出到新目录。
 
 [输出格式](docs/输出格式.md) · [实施计划](plan.md) · [本次验证记录](docs/重构验证.md)

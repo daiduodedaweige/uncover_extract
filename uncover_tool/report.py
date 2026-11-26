@@ -6,10 +6,11 @@ from pathlib import Path
 from urllib.parse import quote
 
 from .common import METRICS, require, write_json
-from .facts import FactsReader
+from .facts import FactsReader, point_label, point_number_starts
 from .output import cell, instance_directory, relative_link, source_cells, target_description
 
 LABELS = {"line": "Line", "tgl": "Toggle", "branch": "Branch", "cond": "Condition"}
+DETAIL_FORMAT = "numbered_checklist_v1"
 OVERVIEW = ("| 模块 | 实例 | Line 未覆盖点数 | Toggle 未覆盖点数 | Branch 未覆盖点数 | Condition 未覆盖点数 |\n"
             "| --- | --- | ---: | ---: | ---: | ---: |\n")
 AVAILABILITY = {"not_selected": "未选择", "not_collected_or_unavailable": "未采集或不可用",
@@ -57,6 +58,7 @@ def write_report(stage, manifest, page_size=2000, page_bytes=1024 * 1024):
 
 def _write_report(stage, manifest, reader, page_size, page_bytes):
     rows = reader.summaries()
+    starts = point_number_starts(rows)
     directories = {}
     all_pages, max_bytes, total_bytes, generated = 0, 0, 0, 0
     for row in rows:
@@ -68,7 +70,8 @@ def _write_report(stage, manifest, reader, page_size, page_bytes):
         directory = stage / relative
         directory.mkdir(parents=True, exist_ok=True)
         row["directory"] = str(relative)
-        for metric, item in row["metrics"].items():
+        for metric in METRICS:
+            item = row["metrics"][metric]
             count = item["uncovered_count"]
             if not count:
                 continue
@@ -78,11 +81,12 @@ def _write_report(stage, manifest, reader, page_size, page_bytes):
                 source, mapping = reader.sources[sid]
                 return source_cells(source, None, mapping, directory)[0]
 
-            iterator = iter(reader.holes(row["instance_id"], metric))
+            iterator = iter(reader.numbered_holes(row["instance_id"], metric, starts[row["instance_id"], metric]))
             pending = next(iterator, None)
             consumed, page = 0, 1
             while pending is not None:
                 body, size = [], 0
+                first_point_no = pending["point_no"]
                 # Reserve room for titles, navigation, and the current instance table.
                 overhead = 2048 + 8 * len(row["instance_path"].encode())
                 while pending is not None and len(body) < page_size:
@@ -90,7 +94,7 @@ def _write_report(stage, manifest, reader, page_size, page_bytes):
                     description = point["description"]
                     if show_target and description is None:
                         description = target_description(metric, json.loads(point["trail"]))
-                    line = (f"- [ ] 源码文件：{source_link(point['source'])}；行号：{cell(point['line'])}"
+                    line = (f"- [ ] 编号：{point_label(point['point_no'])}；源码文件：{source_link(point['source'])}；行号：{cell(point['line'])}"
                             + (f"；信号 / 覆盖点 / 方向：{cell(description)}" if show_target else "") + "\n")
                     length = len(line.encode("utf-8"))
                     if body and size + length + overhead > page_bytes:
@@ -99,6 +103,7 @@ def _write_report(stage, manifest, reader, page_size, page_bytes):
                     size += length
                     pending = next(iterator, None)
                 consumed += len(body)
+                last_point_no = first_point_no + len(body) - 1
                 name = f"{metric}-{page:04d}.md"
                 navigation = []
                 if page > 1:
@@ -107,7 +112,8 @@ def _write_report(stage, manifest, reader, page_size, page_bytes):
                     navigation.append(f"[下一页]({metric}-{page+1:04d}.md)")
                 navigation += ["[实例目录](index.md)", relative_link("主报告", stage / "report.md", directory)]
                 content = (f"# {cell(row['instance_path'])} / {LABELS[metric]}\n\n模块：{cell(row['module_name'])}。\n\n"
-                           f"第 {page} 页，本页 {len(body):,} 个点，本指标共 {count:,} 个未覆盖点。\n\n"
+                           f"第 {page} 页，本页 {len(body):,} 个点，本指标共 {count:,} 个未覆盖点。"
+                           f"编号范围：{point_label(first_point_no)}–{point_label(last_point_no)}。\n\n"
                            + " · ".join(navigation) + "\n\n"
                            + instance_state(row, "以下覆盖点均未覆盖")
                            + "勾选表示该点已分析；未勾选表示待分析。将 `[ ]` 改为 `[x]` 并保存即可记录分析进度。\n\n"
@@ -115,7 +121,8 @@ def _write_report(stage, manifest, reader, page_size, page_bytes):
                            + " · ".join(navigation) + "\n")
                 encoded = content.encode("utf-8")
                 (directory / name).write_bytes(encoded)
-                item["pages"].append({"path": str(relative / name), "records": len(body), "bytes": len(encoded)})
+                item["pages"].append({"path": str(relative / name), "records": len(body), "bytes": len(encoded),
+                                      "first_point_no": first_point_no, "last_point_no": last_point_no})
                 max_bytes = max(max_bytes, len(encoded))
                 total_bytes += len(encoded)
                 all_pages += 1
@@ -133,7 +140,8 @@ def _write_report(stage, manifest, reader, page_size, page_bytes):
                 else:
                     output.write(f"共 {item['uncovered_count']:,} 个未覆盖点。\n\n")
                     for number, page in enumerate(item["pages"], 1):
-                        output.write(f"- [第 {number} 页]({Path(page['path']).name})：{page['records']:,} 个点\n")
+                        output.write(f"- [第 {number} 页]({Path(page['path']).name})：{page['records']:,} 个点，"
+                                     f"{point_label(page['first_point_no'])}–{point_label(page['last_point_no'])}\n")
                     output.write("\n")
         print(f"output: instance {row['instance_path']}, {generated} uncovered records written", flush=True)
 
@@ -142,7 +150,8 @@ def _write_report(stage, manifest, reader, page_size, page_bytes):
                      "四指标分别统计常规未覆盖原子点；— 表示未选择、未采集或没有可分析覆盖点，具体情况见实例小节。"
                      "排除点不参与分析；特殊状态保存在事实库和实例摘要中。\n\n"
                      "覆盖点按源码位置列出；未覆盖原因需要结合源码、配置、激励和波形检查。"
-                     "每条明细前的勾选框表示分析进度：未勾选为待分析，勾选为已分析。\n\n" + OVERVIEW)
+                     "每条明细前的勾选框表示分析进度：未勾选为待分析，勾选为已分析。"
+                     "未覆盖点按实例、指标和源码位置统一编号，从 UC-000001 开始，跨页连续；调整分页或勾选不改变编号。\n\n" + OVERVIEW)
         for row in rows:
             anchor = "instance-" + quote(row["instance_path"], safe="-_")
             row["anchor"] = anchor
@@ -168,5 +177,5 @@ def _write_report(stage, manifest, reader, page_size, page_bytes):
              "uncovered_records": sum(totals.values()), "detail_pages": all_pages, "max_detail_page_bytes": max_bytes,
              "detail_bytes": total_bytes, "page_rows_limit": page_size, "page_bytes_limit": page_bytes}
     write_json(stage / "instance_summary.json", {"schema_version": "1.0", "count_unit": "instance_atomic_point",
-               "statistics": stats, "instances": rows})
+               "detail_format": DETAIL_FORMAT, "statistics": stats, "instances": rows})
     return stats

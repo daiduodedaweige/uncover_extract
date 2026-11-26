@@ -19,6 +19,20 @@ def sql_int(value):
     return value if -(1 << 63) <= value < (1 << 63) else str(value)
 
 
+def point_number_starts(rows):
+    """Assign report-wide ranges in summary instance order and fixed metric order."""
+    starts, next_number = {}, 1
+    for row in rows:
+        for metric in METRICS:
+            starts[row["instance_id"], metric] = next_number
+            next_number += row["metrics"][metric]["uncovered_count"]
+    return starts
+
+
+def point_label(number):
+    return f"UC-{number:06d}"
+
+
 class FactStore:
     def __init__(self, path, batch_size=256):
         self.path = Path(path)
@@ -226,9 +240,15 @@ class FactsReader:
             yield {"id": tid, "source": sid, "line": line, "trail": trail, "covered": int(covered),
                    "coverable": int(total), "raw": int(raw), "description": description}
 
+    def numbered_holes(self, iid, metric, first_point_no):
+        for number, point in enumerate(self.holes(iid, metric), first_point_no):
+            yield {**point, "point_no": number}
+
     def details(self, kind="holes"):
         require(kind == "holes", "Difference exports were removed; use --kind holes for instance uncovered points")
-        for row in self.summaries():
+        rows = self.summaries()
+        starts = point_number_starts(rows)
+        for row in rows:
             iid, path = row["instance_id"], row["instance_path"]
             for metric in METRICS:
                 if not row["metrics"][metric]["uncovered_count"]:
@@ -236,7 +256,7 @@ class FactsReader:
                 model = self.db.execute("SELECT m.info FROM scopes sc JOIN models m ON m.id=sc.model "
                                         "WHERE sc.instance=? AND m.metric=? LIMIT 1", (iid, metric)).fetchone()
                 model_id = json.loads(model[0]).get("model_key") if model else None
-                for point in self.holes(iid, metric):
+                for point in self.numbered_holes(iid, metric, starts[iid, metric]):
                     trail = json.loads(point["trail"])
                     source, mapping = self.sources[point["source"]]
                     target = {"bin_name": trail[-1]["name"] if trail else None, "objects": trail,
@@ -244,7 +264,8 @@ class FactsReader:
                     if metric == "tgl":
                         target.update(direction=target["bin_name"], signal=next((step["name"] for step in reversed(trail[:-1])
                             if step["type"] in ("npiCovSignalBit", "npiCovSignal")), None))
-                    yield {"target_id": stable_id([self.metadata["database_id"], self.metadata["test_scope_ref"], path, metric, trail]),
+                    yield {"point_no": point["point_no"],
+                           "target_id": stable_id([self.metadata["database_id"], self.metadata["test_scope_ref"], path, metric, trail]),
                            "database_id": self.metadata["database_id"], "test_scope_ref": self.metadata["test_scope_ref"],
                            "instance_path": path, "module_name": row["module_name"], "model_id": model_id, "metric": metric,
                            "scope_kind": "instance_self", "source_file": source, "source_mapping": mapping,

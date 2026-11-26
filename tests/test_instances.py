@@ -97,7 +97,7 @@ class InstanceTests(unittest.TestCase):
             self.assertFalse((stage/'differences.csv').exists())
             for page in stage.rglob('line-*.md'):
                 detail=page.read_text()
-                self.assertIn('## 未覆盖点\n\n- [ ] 源码文件：same.sv；行号：3',detail)
+                self.assertRegex(detail,r'## 未覆盖点\n\n- \[ \] 编号：UC-\d{6}；源码文件：same\.sv；行号：3')
                 self.assertNotIn('目标编号',detail)
 
     def test_scope_does_not_read_outside_instances(self):
@@ -180,7 +180,7 @@ class InstanceTests(unittest.TestCase):
                     for page in item['pages']:
                         text=(stage/page['path']).read_text()
                         self.assertIn('## 未覆盖点\n\n',text)
-                        self.assertEqual(text.count('- [ ] 源码文件：'),page['records'])
+                        self.assertEqual(text.count('- [ ] 编号：UC-'),page['records'])
                         self.assertEqual('；信号 / 覆盖点 / 方向：' in text,metric!='line')
                         self.assertNotIn('目标编号',text)
 
@@ -203,10 +203,77 @@ class InstanceTests(unittest.TestCase):
             for p in pages:
                 text=(stage/p['path']).read_text()
                 self.assertNotIn('目标编号',text)
-                descriptions.extend(re.findall(r'^- \[ \] 源码文件：same\.sv；行号：3；信号 / 覆盖点 / 方向：(.+)$',text,re.M))
+                descriptions.extend(re.findall(r'^- \[ \] 编号：UC-\d+；源码文件：same\.sv；行号：3；信号 / 覆盖点 / 方向：(.+)$',text,re.M))
                 for target in re.findall(r'\]\(([^)]+)\)',text):
                     self.assertTrue(((stage/p['path']).parent/unquote(target)).is_file(),target)
             self.assertEqual(descriptions,['bit[0]','bit[1]','bit[2]','bit[10]'])
+
+    def test_global_point_numbers_match_exports_and_survive_repagination(self):
+        from scripts.check_instances import verify
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            values=[(0,1,0)]*3+[(1,1,8),(0,1,1),(0,1,2),(0,1,64)]
+            session=Session(root,{'top.exu_10':values,'top.exu_2':values,'top.exu_1':[(1,1,8)]*7},
+                            names={path:{0:'bit[10]',1:'bit[2]',2:'bit[1]'} for path in ('top.exu_2','top.exu_10')})
+            handle=session.handle
+            session.handle=lambda path,metric:handle(path,'line')
+            stage,_,_=self.run_analysis(session,root,metrics=('cond','branch','tgl','line'))
+            with redirect_stdout(io.StringIO()):stats=write_report(stage,{},page_size=2)
+            manifest=json.loads((stage/'analysis_manifest.json').read_text())
+            manifest['report']=stats;write_json(stage/'analysis_manifest.json',manifest)
+            before={file:file.read_bytes() for file in stage.rglob('*') if file.is_file()}
+            reader=FactsReader(stage/'coverage_facts.sqlite')
+            try:
+                expected=list(reader.details())
+                # These instances share model targets but must have distinct report numbers.
+                self.assertEqual([p['id'] for p in reader.holes(2,'line')],
+                                 [p['id'] for p in reader.holes(3,'line')])
+            finally:reader.close()
+            self.assertEqual([p['point_no'] for p in expected],list(range(1,25)))
+            self.assertEqual([(p['instance_path'],p['metric']) for p in expected],
+                             [(path,metric) for path in ('top.exu_2','top.exu_10')
+                              for metric in ('line','tgl','branch','cond') for _ in range(3)])
+            self.assertEqual([p['target']['bin_name'] for p in expected[:3]],['bit[1]','bit[2]','bit[10]'])
+
+            def report_numbers(result):
+                data=json.loads((result/'instance_summary.json').read_text())
+                self.assertEqual(data['detail_format'],'numbered_checklist_v1')
+                numbers=[]
+                for row in data['instances']:
+                    for metric,item in row['metrics'].items():
+                        for page in item['pages']:
+                            text=(result/page['path']).read_text()
+                            ids=[int(n) for n in re.findall(r'^- \[[ xX]\] 编号：UC-(\d+)；',text,re.M)]
+                            self.assertEqual(len(ids),page['records'])
+                            self.assertEqual((ids[0],ids[-1]),(page['first_point_no'],page['last_point_no']))
+                            label=f"UC-{ids[0]:06d}–UC-{ids[-1]:06d}"
+                            self.assertIn(label,text)
+                            self.assertIn(label,(result/row['directory']/'index.md').read_text())
+                            numbers.extend((row['instance_path'],metric,n) for n in ids)
+                return numbers
+
+            expected_numbers=[(p['instance_path'],p['metric'],p['point_no']) for p in expected]
+            self.assertEqual(report_numbers(stage),expected_numbers)
+            with redirect_stdout(io.StringIO()):self.assertTrue(verify(stage)['passed'])
+            for suffix in ('.jsonl','.jsonl.gz'):
+                out=root/('holes'+suffix)
+                with redirect_stdout(io.StringIO()):export(['--result',str(stage),'--out',str(out)])
+                opener=gzip.open if suffix.endswith('.gz') else open
+                with opener(out,'rt',encoding='utf-8') as stream:
+                    self.assertEqual([json.loads(line) for line in stream],expected)
+            for name,page_size,page_bytes in [('wide',100,4096),('bytes',100,2300)]:
+                with self.subTest(pagination=name):
+                    out=root/name
+                    with redirect_stdout(io.StringIO()):result=rebuild(stage,out,page_size=page_size,page_bytes=page_bytes)
+                    self.assertEqual(report_numbers(out),expected_numbers)
+                    reader=FactsReader(out/'coverage_facts.sqlite')
+                    try:self.assertEqual(list(reader.details()),expected)
+                    finally:reader.close()
+                    with redirect_stdout(io.StringIO()):self.assertTrue(verify(out)['passed'])
+                    self.assertLessEqual(result['report']['max_detail_page_bytes'],page_bytes)
+                    if name=='wide':self.assertEqual(result['report']['detail_pages'],8)
+                    else:self.assertGreater(result['report']['detail_pages'],8)
+            self.assertTrue(all(file.read_bytes()==content for file,content in before.items()))
 
     def test_parent_directory_can_contain_child_without_parent_page(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -266,6 +333,9 @@ class InstanceTests(unittest.TestCase):
             self.assertEqual(before,(stage/'coverage_facts.sqlite').read_bytes())
             self.assertNotIn('same_rtl_comparison',result)
             self.assertEqual(result['facts_source']['schema_version'],'1.0')
+            reader=FactsReader(root/'rebuilt/coverage_facts.sqlite')
+            try:self.assertEqual([p['point_no'] for p in reader.details()],[1])
+            finally:reader.close()
             with self.assertRaises(ToolError):rebuild(stage,root/'rebuilt')
 
     def test_worker_failure_audits_input_and_closes_facts(self):
@@ -388,6 +458,7 @@ class InstanceTests(unittest.TestCase):
             manifest['report']=stats;write_json(stage/'analysis_manifest.json',manifest)
             with redirect_stdout(io.StringIO()):self.assertTrue(verify(stage)['passed'])
             data=json.loads((stage/'instance_summary.json').read_text())
+            data.pop('detail_format')
             reader=FactsReader(stage/'coverage_facts.sqlite')
             try:
                 for row in data['instances']:
@@ -398,13 +469,14 @@ class InstanceTests(unittest.TestCase):
                         separator=' --- |' if metric!='line' else ''
                         legacy=f'| 目标编号 | 源码文件 | 行号 |{suffix}\n| ---: | --- | ---: |{separator}\n'
                         for page in item['pages']:
+                            page.pop('first_point_no');page.pop('last_point_no')
                             file=stage/page['path']
                             before,body=file.read_text().split('## 未覆盖点\n\n',1)
                             records,after=body.split('\n\n',1)
                             numbered=[]
                             for record in records.splitlines():
                                 tid=next(points)['id']
-                                fields=record.removeprefix('- [ ] 源码文件：').replace('；行号：',' | ',1).replace(
+                                fields=record.split('；源码文件：',1)[1].replace('；行号：',' | ',1).replace(
                                     '；信号 / 覆盖点 / 方向：',' | ',1)
                                 numbered.append(f'| {tid} | {fields} |')
                                 digest.update(f'{tid}\n'.encode())
@@ -446,6 +518,65 @@ class InstanceTests(unittest.TestCase):
             write_json(stage/'instance_summary.json',data)
             with redirect_stdout(io.StringIO()),self.assertRaisesRegex(ToolError,'Page digest differs'):
                 verify(stage)
+
+    def test_verifier_accepts_legacy_unnumbered_checklists(self):
+        from scripts.check_instances import verify
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            session=Session(root,{'top.a':[(0,1,0)]*3})
+            handle=session.handle
+            session.handle=lambda path,metric:handle(path,'line')
+            stage,_,_=self.run_analysis(session,root,metrics=('line','tgl','branch','cond'))
+            with redirect_stdout(io.StringIO()):stats=write_report(stage,{},page_size=2)
+            data=json.loads((stage/'instance_summary.json').read_text())
+            data.pop('detail_format')
+            sizes=[]
+            for row in data['instances']:
+                for item in row['metrics'].values():
+                    for page in item['pages']:
+                        file=stage/page['path']
+                        text=re.sub(r'(?m)^(- \[[ xX]\] )编号：UC-\d+；',r'\1',file.read_text())
+                        file.write_text(text.replace('- [ ] ','- [x] ',1).replace('- [ ] ','- [X] ',1))
+                        page.pop('first_point_no');page.pop('last_point_no')
+                        page['bytes']=file.stat().st_size;sizes.append(page['bytes'])
+            stats.update(detail_bytes=sum(sizes),max_detail_page_bytes=max(sizes))
+            data['statistics']=stats;write_json(stage/'instance_summary.json',data)
+            manifest=json.loads((stage/'analysis_manifest.json').read_text())
+            manifest['report']=stats;write_json(stage/'analysis_manifest.json',manifest)
+            with redirect_stdout(io.StringIO()):checked=verify(stage)
+            self.assertEqual((checked['uncovered_records'],checked['detail_pages']),(12,8))
+
+    def test_verifier_rejects_corrupt_point_numbers_and_ranges(self):
+        from scripts.check_instances import verify
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            stage,_,_=self.run_analysis(Session(root,{'top.a':[(0,1,0)]*3}),root)
+            with redirect_stdout(io.StringIO()):stats=write_report(stage,{})
+            manifest=json.loads((stage/'analysis_manifest.json').read_text())
+            manifest['report']=stats;write_json(stage/'analysis_manifest.json',manifest)
+            data=json.loads((stage/'instance_summary.json').read_text())
+            page=data['instances'][0]['metrics']['line']['pages'][0]
+            file=stage/page['path'];original=file.read_text()
+            for old,new in [('UC-000002','UC-000001'),('UC-000002','UC-000004'),
+                            ('编号：UC-000002；',''),('UC-000002','UC-2')]:
+                with self.subTest(corruption=new):
+                    file.write_text(original.replace(old,new,1))
+                    page['bytes']=file.stat().st_size;write_json(stage/'instance_summary.json',data)
+                    with redirect_stdout(io.StringIO()),self.assertRaisesRegex(ToolError,'point number'):
+                        verify(stage)
+            file.write_text(original);page['bytes']=file.stat().st_size
+            for field in ('first_point_no','last_point_no'):
+                for value in (None,99):
+                    with self.subTest(field=field,value=value):
+                        old=page.pop(field)
+                        if value is not None:page[field]=value
+                        write_json(stage/'instance_summary.json',data)
+                        with redirect_stdout(io.StringIO()),self.assertRaisesRegex(ToolError,'point number range'):
+                            verify(stage)
+                        page[field]=old
+            data['detail_format']='unknown'
+            write_json(stage/'instance_summary.json',data)
+            with self.assertRaisesRegex(ToolError,'Unsupported detail format'):verify(stage)
 
     def test_verifier_rejects_duplicate_point_and_broken_navigation(self):
         from scripts.check_instances import verify

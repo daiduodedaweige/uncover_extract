@@ -14,8 +14,9 @@ from urllib.parse import unquote
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 from uncover_tool.common import require,write_json
-from uncover_tool.facts import FactsReader
+from uncover_tool.facts import FactsReader,point_label,point_number_starts
 from uncover_tool.output import cell,source_cells,target_description
+from uncover_tool.report import DETAIL_FORMAT
 
 
 def stream_records(path):
@@ -61,6 +62,8 @@ def verify(result):
     result=Path(result).resolve()
     data=json.loads((result/'instance_summary.json').read_text())
     manifest=json.loads((result/'analysis_manifest.json').read_text())
+    require(data.get('detail_format') in (None,DETAIL_FORMAT),'Unsupported detail format')
+    numbered_checklist=data.get('detail_format')==DETAIL_FORMAT
     require('same_rtl_comparison' not in manifest,'Obsolete comparison manifest field')
     for name in ('differences.csv','differences.jsonl.gz','difference_patterns.jsonl.gz','module_summary.json'):
         require(not (result/name).exists(),f'Obsolete comparison output: {name}')
@@ -83,10 +86,14 @@ def verify(result):
             require(target.is_file(),f'Broken file link in {path}: {destination}')
             links.add(target)
     check_links(result/'report.md',main)
-    expected={row['instance_path']:row for row in reader.summaries()}
+    expected_rows=reader.summaries()
+    expected={row['instance_path']:row for row in expected_rows}
+    starts=point_number_starts(expected_rows)
     try:
+        require([row['instance_path'] for row in data['instances']]==list(expected),'Instance list or order differs')
         for row in data['instances']:
             path=row['instance_path']
+            require(row['instance_id']==expected[path]['instance_id'],'Instance ID differs')
             require(row['metrics'].keys()==expected[path]['metrics'].keys(),'Metric list differs')
             has_holes=any(item['uncovered_count'] for item in row['metrics'].values())
             require(('directory' in row)==has_holes,'Empty instance directory recorded')
@@ -95,7 +102,8 @@ def verify(result):
                 check_links(index,index.read_text())
             for metric,item in row['metrics'].items():
                 require(item['uncovered_count']==expected[path]['metrics'][metric]['uncovered_count'],'Summary differs from states')
-                points=iter(reader.holes(row['instance_id'],metric)) if item['pages'] else iter(())
+                first_point_no=starts[row['instance_id'],metric]
+                points=iter(reader.numbered_holes(row['instance_id'],metric,first_point_no)) if item['pages'] else iter(())
                 observed=0
                 digest=hashlib.sha256() if 'target_sequence_sha256' in item else None
                 show_target=metric!='line'
@@ -107,10 +115,16 @@ def verify(result):
                     file=result/page['path'];text=file.read_text()
                     checklist='## 未覆盖点\n\n' in text
                     numbered=legacy_table in text
+                    if numbered_checklist:require(checklist,'Numbered checklist is missing')
                     page_table='## 未覆盖点\n\n' if checklist else legacy_table if numbered else table
                     require(page_table in text,'Coverage table columns differ')
                     records=text.split(page_table,1)[1].split('\n\n',1)[0].splitlines()
                     require(len(records)==page['records'],'Page record count differs')
+                    if numbered_checklist:
+                        require(bool(records),'Empty numbered detail page')
+                        require(page.get('first_point_no')==first_point_no+observed and
+                                page.get('last_point_no')==first_point_no+observed+len(records)-1,
+                                'Page point number range differs')
                     for record in records:
                         fact=next(points,None)
                         require(fact is not None,'Page has extra coverage points')
@@ -118,6 +132,10 @@ def verify(result):
                         if checklist:
                             require(re.match(r'^- \[[ xX]\] ',record) is not None,'Invalid analysis checkbox')
                             record=record[6:]
+                            if numbered_checklist:
+                                prefix=f"编号：{point_label(fact['point_no'])}；"
+                                require(record.startswith(prefix),'Coverage point number differs')
+                                record=record[len(prefix):]
                             expected_record=f"源码文件：{source}；行号：{cell(fact['line'])}"
                         else:
                             number=f"{fact['id']} | " if numbered else ''
